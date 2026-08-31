@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Literal
 from pathlib import Path
-import sqlite3, uuid, os, json
+import sqlite3, uuid, os, json, time
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "aioff.db"
@@ -134,6 +134,33 @@ def structured(response, cls):
     return cls.model_validate_json(response.text)
 
 
+def gemini_generate(client, *, contents, config=None, attempts: int = 3):
+    last_error = None
+    transient_names = {
+        "ServerError",
+        "ServiceUnavailable",
+        "InternalServerError",
+        "DeadlineExceeded",
+        "ResourceExhausted",
+    }
+
+    for attempt in range(attempts):
+        try:
+            kwargs = {"model": model_name(), "contents": contents}
+            if config is not None:
+                kwargs["config"] = config
+            return client.models.generate_content(**kwargs)
+        except Exception as e:
+            last_error = e
+            status = getattr(e, "status_code", None) or getattr(e, "code", None)
+            transient = type(e).__name__ in transient_names or status in {429, 500, 502, 503, 504}
+            if not transient or attempt == attempts - 1:
+                raise
+            time.sleep(0.8 * (2 ** attempt))
+
+    raise last_error
+
+
 @app.get("/")
 def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
@@ -148,11 +175,8 @@ def health():
 def chat(req: ChatRequest):
     client = gemini_client()
     sid = req.session_id or str(uuid.uuid4())
-    with connect_db() as c:
-        c.execute("INSERT OR IGNORE INTO sessions(id) VALUES(?)", (sid,))
-        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)", (sid, req.message))
 
-    prior = messages(sid, 18)[:-1]
+    prior = messages(sid, 18)
     history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
     prompt = f"""너는 중·고등학생의 수행평가와 학습을 돕는 AI 튜터다.
 학생 대신 과제를 통째로 완성하기보다 학생이 스스로 판단할 수 있도록 설명, 질문, 예시를 제공한다.
@@ -166,7 +190,7 @@ def chat(req: ChatRequest):
 [학생의 새 요청]
 {req.message}"""
     try:
-        r = client.models.generate_content(model=model_name(), contents=prompt)
+        r = gemini_generate(client, contents=prompt)
         reply = (r.text or "").strip()
         if not reply:
             raise ValueError("empty")
@@ -174,6 +198,8 @@ def chat(req: ChatRequest):
         raise HTTPException(502, f"Gemini 응답 오류: {type(e).__name__}")
 
     with connect_db() as c:
+        c.execute("INSERT OR IGNORE INTO sessions(id) VALUES(?)", (sid,))
+        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)", (sid, req.message))
         c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)", (sid, reply))
     return {"session_id": sid, "reply": reply}
 
@@ -196,7 +222,7 @@ evidence는 실제 대화에서 확인되는 짧은 근거를 최대 2개 적는
 top_skills는 위임 정도가 큰 기능 3개를 순서대로 넣는다.
 학생의 성향이나 장기 능력을 단정하지 않는다."""
     try:
-        r = client.models.generate_content(model=model_name(), contents=prompt, config={"response_mime_type":"application/json", "response_schema":AnalysisResult})
+        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":AnalysisResult})
         result = structured(r, AnalysisResult)
     except Exception as e:
         raise HTTPException(502, f"Gemini 분석 오류: {type(e).__name__}")
@@ -227,7 +253,7 @@ AI 위임이 큰 기능: {', '.join(top)}
 skill은 제시된 상위 기능 중 하나를 사용한다.
 evaluation_criteria는 채점 핵심 기준 2~4개를 적는다."""
     try:
-        r = client.models.generate_content(model=model_name(), contents=prompt, config={"response_mime_type":"application/json", "response_schema":OffTestResult})
+        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":OffTestResult})
         result = structured(r, OffTestResult)
     except Exception as e:
         raise HTTPException(502, f"AI OFF 문제 생성 오류: {type(e).__name__}")
@@ -270,7 +296,7 @@ score는 독립 수행 확인 정도 0~100이다.
 feedback에는 잘한 점과 다음에 직접 해볼 한 가지를 짧게 적는다.
 question_id와 skill은 입력값을 그대로 유지한다."""
     try:
-        r = client.models.generate_content(model=model_name(), contents=prompt, config={"response_mime_type":"application/json", "response_schema":EvaluationResult})
+        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":EvaluationResult})
         result = structured(r, EvaluationResult)
     except Exception as e:
         raise HTTPException(502, f"AI OFF 답변 평가 오류: {type(e).__name__}")
