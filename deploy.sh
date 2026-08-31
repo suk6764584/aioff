@@ -25,7 +25,7 @@ if [ -f .env ]; then
 fi
 
 echo "[3/6] Syntax check"
-.venv/bin/python -m py_compile app.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py migrate_db.py
 
 echo "[4/6] Database migration"
 .venv/bin/python migrate_db.py
@@ -34,7 +34,7 @@ echo "[5/6] Install/reload service"
 if systemctl is-active --quiet aioff 2>/dev/null; then
   systemctl stop aioff
 else
-  pkill -f 'uvicorn app:app --host 0.0.0.0 --port 3000' 2>/dev/null || true
+  pkill -f 'uvicorn .*:app --host 0.0.0.0 --port 3000' 2>/dev/null || true
 fi
 cp -f aioff.service /etc/systemd/system/aioff.service
 systemctl daemon-reload
