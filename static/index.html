@@ -4,13 +4,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI OFF</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"></script>
 <style>
 :root{--bg:#f4f6fa;--card:#fff;--text:#152033;--muted:#69758a;--line:#e1e6ef;--accent:#245cff;--green:#17a673;--soft:#eef3ff;--danger:#d84b4b}
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;background:var(--bg);color:var(--text)}
 header{height:62px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:10}.brand{font-size:20px;font-weight:850}.badge{font-size:12px;padding:7px 11px;border-radius:999px;background:var(--soft);color:var(--accent);font-weight:750;white-space:nowrap}
 main{max-width:1120px;margin:28px auto;padding:0 18px 60px}.grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 6px 20px rgba(28,41,69,.05)}.hero{margin-bottom:20px}
 h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}h2{font-size:18px;margin:0 0 14px}p{line-height:1.62;margin:8px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.meta .box{background:#fafbfe;border:1px solid var(--line);padding:14px;border-radius:12px}.label{font-size:12px;color:var(--muted);font-weight:750;margin-bottom:5px}
-.chat{height:400px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfcff}.msg{max-width:80%;padding:11px 13px;border-radius:14px;margin:8px 0;line-height:1.55;white-space:pre-wrap;word-break:break-word}.user{margin-left:auto;background:var(--accent);color:#fff}.assistant{background:#fff;border:1px solid var(--line)}
+.chat{height:400px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfcff}.msg{max-width:80%;padding:11px 13px;border-radius:14px;margin:8px 0;line-height:1.55;word-break:break-word}.user{margin-left:auto;background:var(--accent);color:#fff;white-space:pre-wrap}.assistant{background:#fff;border:1px solid var(--line);white-space:normal}.assistant>:first-child{margin-top:0}.assistant>:last-child{margin-bottom:0}.assistant p{margin:7px 0}.assistant ul,.assistant ol{margin:7px 0;padding-left:22px}.assistant li{margin:3px 0}.assistant h1,.assistant h2,.assistant h3,.assistant h4{font-size:1em;margin:12px 0 6px;letter-spacing:0}.assistant code{background:#f1f3f7;border-radius:5px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.assistant pre{overflow:auto;background:#f5f7fa;border:1px solid var(--line);border-radius:9px;padding:10px}.assistant pre code{background:transparent;padding:0}.assistant blockquote{margin:9px 0;padding:4px 0 4px 12px;border-left:3px solid #cfd7e6;color:#4c5a70}.assistant hr{border:0;border-top:1px solid var(--line);margin:12px 0}.assistant .katex-display{overflow-x:auto;overflow-y:hidden;margin:10px 0}
 .composer{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:10px;margin-top:12px}textarea{width:100%;min-height:68px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;line-height:1.5}button{border:0;border-radius:11px;padding:11px 15px;font-weight:750;cursor:pointer;white-space:nowrap}button:disabled{opacity:.55;cursor:not-allowed}.primary{background:var(--accent);color:#fff}.danger{background:#fff0f0;color:var(--danger)}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 .skill{margin:14px 0}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:13px}.bar{height:9px;border-radius:999px;background:#edf0f4;overflow:hidden;margin-top:6px}.fill{height:100%;background:var(--accent)}.offfill{height:100%;background:var(--green)}.evidence{font-size:12px;color:var(--muted);line-height:1.45;margin-top:5px}.question,.result-card{border:1px solid var(--line);border-radius:13px;padding:15px;margin:12px 0;background:#fcfdff}.why{font-size:12px;color:var(--muted);padding:8px 10px;background:#f5f7fb;border-radius:8px;margin-bottom:10px}.compare{display:grid;grid-template-columns:125px 1fr 54px;gap:10px;align-items:center;margin:9px 0;font-size:13px}.compare .bar{margin:0}.level{display:inline-block;font-size:12px;font-weight:750;padding:5px 8px;border-radius:999px;background:#eef8f4;color:#087b52}.hidden{display:none}.status{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}.error{color:#c43939}.footer-note{font-size:12px;color:var(--muted);margin-top:16px}
 @media(max-width:850px){header{padding:0 16px}.grid,.meta{grid-template-columns:1fr}.composer{grid-template-columns:1fr}.composer button{height:44px}.msg{max-width:92%}h1{font-size:23px}}
@@ -33,7 +38,18 @@ h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}h2{font-size:18px;margin:0
 </main>
 <script>
 let sessionId=null,questions=[],delegationMap={},aiOffStarted=false;const chat=document.getElementById('chat'),input=document.getElementById('input'),send=document.getElementById('send'),finish=document.getElementById('finish'),badge=document.getElementById('modeBadge');
-function addMsg(role,content){const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');el.textContent=content;chat.appendChild(el);chat.scrollTop=chat.scrollHeight}
+function renderAssistant(el,content){
+  if(window.marked&&window.DOMPurify){
+    const html=marked.parse(content,{breaks:true,gfm:true});
+    el.innerHTML=DOMPurify.sanitize(html);
+    if(window.renderMathInElement){
+      renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});
+    }
+  }else{
+    el.textContent=content;
+  }
+}
+function addMsg(role,content){const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');if(role==='assistant')renderAssistant(el,content);else el.textContent=content;chat.appendChild(el);chat.scrollTop=chat.scrollHeight}
 function setError(el,msg){el.textContent=msg;el.classList.add('error')}function clearError(el){el.textContent='';el.classList.remove('error')}
 async function api(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'요청 처리 중 오류가 발생했습니다.');return d}
 fetch('/health').then(r=>r.json()).then(d=>{badge.textContent=d.gemini_configured?`AI ON · ${d.model}`:'Gemini 키 설정 필요'}).catch(()=>badge.textContent='서버 연결 확인 필요');
