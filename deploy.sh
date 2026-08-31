@@ -9,6 +9,15 @@ git pull --ff-only origin main
 echo "[2/6] Install/update dependencies"
 .venv/bin/pip install -r requirements.txt
 
+# Prototype mode: keep the existing API key, but use the lower-quota-cost model.
+if [ -f .env ]; then
+  if grep -q '^GEMINI_MODEL=' .env; then
+    sed -i 's/^GEMINI_MODEL=.*/GEMINI_MODEL=gemini-3.5-flash-lite/' .env
+  else
+    printf '\nGEMINI_MODEL=gemini-3.5-flash-lite\n' >> .env
+  fi
+fi
+
 echo "[3/6] Syntax check"
 .venv/bin/python -m py_compile app.py migrate_db.py
 
