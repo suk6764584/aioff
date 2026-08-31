@@ -9,6 +9,7 @@ import uuid
 import os
 import json
 import time
+import logging
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "aioff.db"
@@ -16,6 +17,8 @@ ENV_PATH = BASE_DIR / ".env"
 
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
 DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
+
+logger = logging.getLogger("aioff")
 
 
 def load_env_file():
@@ -93,6 +96,17 @@ class AnswerItem(BaseModel):
 class SubmitOffRequest(BaseModel):
     session_id: str
     answers: List[AnswerItem]
+
+
+class EvaluationDraftItem(BaseModel):
+    question_id: int
+    score: float
+    feedback: str = ""
+
+
+class EvaluationDraft(BaseModel):
+    results: List[EvaluationDraftItem]
+    overall_summary: str = ""
 
 
 def gemini_model():
@@ -183,6 +197,51 @@ def error_code(exc):
     return None
 
 
+def extract_json_value(text: str):
+    """Parse model JSON even when a fence or short preamble is present."""
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("model_json_empty")
+
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        stripped = "\n".join(lines).strip()
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    starts = [i for i, ch in enumerate(stripped) if ch in "[{"]
+    for start in starts:
+        try:
+            value, _ = decoder.raw_decode(stripped[start:])
+            return value
+        except json.JSONDecodeError:
+            continue
+
+    raise ValueError("model_json_invalid")
+
+
+def validate_model_text(text: str, cls):
+    value = extract_json_value(text)
+
+    # Low-cost models sometimes return a bare list although the schema expects
+    # a single wrapper object. Normalize only the two unambiguous list cases.
+    if isinstance(value, list):
+        if cls is OffTestResult:
+            value = {"questions": value}
+        elif cls is EvaluationDraft:
+            value = {"results": value}
+
+    return cls.model_validate(value)
+
+
 def gemini_generate(prompt: str, config=None):
     client = gemini_client()
     last_error = None
@@ -203,6 +262,45 @@ def gemini_generate(prompt: str, config=None):
     raise last_error
 
 
+def gemini_generate_text(prompt: str, config=None):
+    response = gemini_generate(prompt, config=config)
+    text = (getattr(response, "text", None) or "").strip()
+    if not text:
+        raise ValueError("gemini_empty_response")
+    return text
+
+
+def gemini_generate_structured(prompt: str, cls):
+    response = gemini_generate(
+        prompt,
+        config={"response_mime_type": "application/json", "response_schema": cls},
+    )
+    parsed = getattr(response, "parsed", None)
+    if parsed is not None:
+        try:
+            return parsed if isinstance(parsed, cls) else cls.model_validate(parsed)
+        except Exception:
+            pass
+    return validate_model_text((getattr(response, "text", None) or "").strip(), cls)
+
+
+def groq_message_text(message):
+    content = getattr(message, "content", "")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("text") or item.get("content") or ""))
+            else:
+                parts.append(str(getattr(item, "text", "") or getattr(item, "content", "") or ""))
+        return "".join(parts).strip()
+    return str(content or "").strip()
+
+
 def groq_generate_text(prompt: str, max_output_tokens: int = 700):
     client = groq_client()
     if client is None:
@@ -211,11 +309,11 @@ def groq_generate_text(prompt: str, max_output_tokens: int = 700):
         model=groq_model(),
         messages=[{"role": "user", "content": prompt}],
         max_completion_tokens=max_output_tokens,
-        reasoning_effort="low",
-        reasoning_format="hidden",
         temperature=0.3,
     )
-    text = (response.choices[0].message.content or "").strip()
+    if not getattr(response, "choices", None):
+        raise ValueError("groq_no_choices")
+    text = groq_message_text(response.choices[0].message)
     if not text:
         raise ValueError("groq_empty_response")
     return text
@@ -229,8 +327,6 @@ def groq_generate_structured(prompt: str, cls, max_output_tokens: int = 900):
         model=groq_model(),
         messages=[{"role": "user", "content": prompt}],
         max_completion_tokens=max_output_tokens,
-        reasoning_effort="low",
-        reasoning_format="hidden",
         temperature=0.2,
         response_format={
             "type": "json_schema",
@@ -241,41 +337,45 @@ def groq_generate_structured(prompt: str, cls, max_output_tokens: int = 900):
             },
         },
     )
-    text = (response.choices[0].message.content or "").strip()
+    if not getattr(response, "choices", None):
+        raise ValueError("groq_no_choices")
+    text = groq_message_text(response.choices[0].message)
     if not text:
         raise ValueError("groq_empty_response")
-    return cls.model_validate_json(text)
+    return validate_model_text(text, cls)
 
 
 def generate_text_with_fallback(prompt: str, gemini_config=None, max_output_tokens: int = 700):
     try:
-        r = gemini_generate(prompt, config=gemini_config)
-        text = (r.text or "").strip()
-        if not text:
-            raise ValueError("gemini_empty_response")
-        return text, "gemini"
+        return gemini_generate_text(prompt, config=gemini_config), "gemini"
     except Exception as gemini_error:
+        logger.warning(
+            "Gemini text generation failed: %s code=%s",
+            type(gemini_error).__name__,
+            error_code(gemini_error),
+        )
         if not groq_configured():
             raise gemini_error
         return groq_generate_text(prompt, max_output_tokens=max_output_tokens), "groq"
 
 
 def generate_structured_with_fallback(prompt: str, cls, max_output_tokens: int = 900):
+    """Success means API call, JSON parsing and schema validation all succeeded."""
     try:
-        r = gemini_generate(
-            prompt,
-            config={"response_mime_type": "application/json", "response_schema": cls},
-        )
-        parsed = getattr(r, "parsed", None)
-        if parsed is not None:
-            result = parsed if isinstance(parsed, cls) else cls.model_validate(parsed)
-        else:
-            result = cls.model_validate_json(r.text)
-        return result, "gemini"
+        return gemini_generate_structured(prompt, cls), "gemini"
     except Exception as gemini_error:
+        logger.warning(
+            "Gemini structured generation failed: %s code=%s",
+            type(gemini_error).__name__,
+            error_code(gemini_error),
+        )
         if not groq_configured():
             raise gemini_error
-        return groq_generate_structured(prompt, cls, max_output_tokens=max_output_tokens), "groq"
+        return groq_generate_structured(
+            prompt,
+            cls,
+            max_output_tokens=max_output_tokens,
+        ), "groq"
 
 
 def level_from_score(score: int):
@@ -286,30 +386,20 @@ def level_from_score(score: int):
     return "추가 확인 필요"
 
 
-def parse_plain_evaluation(text: str, expected_ids: set[int]):
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError as e:
-        raise ValueError("evaluation_json_invalid") from e
-
-    raw_results = data.get("results")
-    if not isinstance(raw_results, list):
-        raise ValueError("evaluation_results_missing")
-
+def validate_evaluation(result: EvaluationDraft, expected_ids: set[int]):
     parsed = []
     seen = set()
-    for item in raw_results:
-        if not isinstance(item, dict):
-            continue
-        try:
-            question_id = int(item.get("question_id"))
-            score = int(round(float(item.get("score"))))
-        except (TypeError, ValueError):
-            continue
+
+    for item in result.results:
+        question_id = int(item.question_id)
         if question_id not in expected_ids or question_id in seen:
             continue
-        score = max(0, min(100, score))
-        feedback = str(item.get("feedback") or "").strip() or "답변의 핵심 내용을 평가기준과 다시 비교해 보세요."
+
+        score = max(0, min(100, int(round(float(item.score)))))
+        feedback = (item.feedback or "").strip()
+        if not feedback:
+            feedback = "답변의 핵심 내용을 평가기준과 다시 비교해 보세요."
+
         parsed.append({
             "question_id": question_id,
             "score": score,
@@ -321,7 +411,10 @@ def parse_plain_evaluation(text: str, expected_ids: set[int]):
     if seen != expected_ids:
         raise ValueError("evaluation_question_mismatch")
 
-    overall_summary = str(data.get("overall_summary") or "").strip() or "각 문항별 독립 수행 결과를 확인했습니다."
+    overall_summary = (result.overall_summary or "").strip()
+    if not overall_summary:
+        overall_summary = "각 문항별 독립 수행 결과를 확인했습니다."
+
     return parsed, overall_summary
 
 
@@ -396,14 +489,16 @@ def chat_stream(req: ChatRequest):
                     model=groq_model(),
                     messages=[{"role": "user", "content": prompt}],
                     max_completion_tokens=700,
-                    reasoning_effort="low",
-                    reasoning_format="hidden",
                     temperature=0.3,
                     stream=True,
                 )
                 reply_parts = []
                 for chunk in stream:
-                    text = chunk.choices[0].delta.content or ""
+                    choices = getattr(chunk, "choices", None) or []
+                    if not choices:
+                        continue
+                    delta = getattr(choices[0], "delta", None)
+                    text = getattr(delta, "content", None) or ""
                     if text:
                         reply_parts.append(text)
                         yield text
@@ -413,6 +508,7 @@ def chat_stream(req: ChatRequest):
                 save_chat_exchange(sid, req.message, reply)
                 return
             except Exception as groq_error:
+                logger.warning("Groq stream fallback failed: %s", type(groq_error).__name__)
                 yield f"Gemini 오류 후 Groq 보조 응답도 실패했습니다: {type(groq_error).__name__}"
                 return
 
@@ -457,6 +553,7 @@ top_skills에는 위임 정도가 0보다 큰 기능만 최대 3개를 높은 �
             max_output_tokens=900,
         )
     except Exception as e:
+        logger.exception("Conversation analysis failed")
         raise HTTPException(502, f"대화 분석 오류: {type(e).__name__}")
 
     data = result.model_dump()
@@ -534,7 +631,10 @@ def off_test(req: SessionRequest):
             OffTestResult,
             max_output_tokens=1200,
         )
+        if len(result.questions) < 3:
+            raise ValueError("off_test_question_count")
     except Exception as e:
+        logger.exception("AI OFF question generation failed")
         raise HTTPException(502, f"AI OFF 문제 생성 오류: {type(e).__name__}")
 
     out = []
@@ -572,6 +672,7 @@ def off_submit(req: SubmitOffRequest):
     qmap = {r["id"]: r for r in rows}
     answer_map = {a.question_id: a.answer for a in req.answers}
     items = []
+
     for a in req.answers:
         q = qmap.get(a.question_id)
         if q:
@@ -603,15 +704,16 @@ question_id: {item['question_id']}
 {chr(10).join(prompt_blocks)}
 
 평가 원칙:
-- 각 문항의 score만 0~100 정수로 판단하세요.
+- 각 문항의 score만 0~100 범위의 숫자로 판단하세요.
 - 문장 표현의 화려함보다 평가기준에 해당하는 사고를 실제로 수행했는지 우선합니다.
 - 확인되지 않은 내용을 학생이 맞게 썼다고 가정하지 마세요.
 - feedback은 잘한 점과 부족한 점 또는 다음에 직접 확인할 점을 2~3문장으로 작성하세요.
 - 학생의 지능, 성격, 장기 능력을 판단하지 마세요.
 - question_id는 위에 제시된 값을 그대로 사용하세요.
 - 등급(level)은 작성하지 마세요. 서버가 score로 계산합니다.
+- 모든 question_id를 정확히 한 번씩 평가하세요.
 
-아래 JSON 형식만 반환하세요. 마크다운 코드블록은 사용하지 마세요.
+반환 형식:
 {{
   "results": [
     {{"question_id": 1, "score": 80, "feedback": "..."}}
@@ -620,13 +722,14 @@ question_id: {item['question_id']}
 }}"""
 
     try:
-        text, _ = generate_text_with_fallback(
+        draft, _ = generate_structured_with_fallback(
             prompt,
-            gemini_config={"response_mime_type": "application/json"},
+            EvaluationDraft,
             max_output_tokens=900,
         )
-        parsed_results, overall_summary = parse_plain_evaluation(text, set(ids))
+        parsed_results, overall_summary = validate_evaluation(draft, set(ids))
     except Exception as e:
+        logger.exception("AI OFF evaluation failed")
         raise HTTPException(502, f"AI OFF 답변 평가 오류: {type(e).__name__}")
 
     results = []
