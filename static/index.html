@@ -37,7 +37,9 @@ h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}h2{font-size:18px;margin:0
 <section id="resultSection" class="card hidden" style="margin-top:20px"><h2>이번 학습 결과</h2><p class="status">AI 위임 정도와 AI OFF에서 확인된 독립 수행 결과를 구분해 표시합니다.</p><div id="results"></div><div id="overall" class="status"></div><div class="footer-note">이 결과는 이번 세션의 수행만 보여주며 학생의 장기 능력이나 성향을 판단하지 않습니다.</div></section>
 </main>
 <script>
-let sessionId=null,questions=[],delegationMap={},aiOffStarted=false;const chat=document.getElementById('chat'),input=document.getElementById('input'),send=document.getElementById('send'),finish=document.getElementById('finish'),badge=document.getElementById('modeBadge');
+let sessionId=null,questions=[],delegationMap={},aiOffStarted=false,requestInFlight=false;
+const chat=document.getElementById('chat'),input=document.getElementById('input'),send=document.getElementById('send'),finish=document.getElementById('finish'),badge=document.getElementById('modeBadge');
+
 function renderAssistant(el,content){
   if(window.marked&&window.DOMPurify){
     const html=marked.parse(content,{breaks:true,gfm:true});
@@ -50,12 +52,132 @@ function renderAssistant(el,content){
   }
 }
 function addMsg(role,content){const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');if(role==='assistant')renderAssistant(el,content);else el.textContent=content;chat.appendChild(el);chat.scrollTop=chat.scrollHeight;return el}
-function setError(el,msg){el.textContent=msg;el.classList.add('error')}function clearError(el){el.textContent='';el.classList.remove('error')}
+function setError(el,msg){el.textContent=msg;el.classList.add('error')}
+function clearError(el){el.textContent='';el.classList.remove('error')}
 async function api(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'요청 처리 중 오류가 발생했습니다.');return d}
+
 fetch('/health').then(r=>r.json()).then(d=>{badge.textContent=d.gemini_configured?`AI ON · ${d.model}`:'Gemini 키 설정 필요'}).catch(()=>badge.textContent='서버 연결 확인 필요');
-send.onclick=async()=>{if(aiOffStarted)return;const text=input.value.trim();if(!text)return;const st=document.getElementById('chatStatus');clearError(st);addMsg('user',text);input.value='';send.disabled=true;st.textContent='첫 답변을 준비하는 중...';const aiEl=addMsg('assistant','');aiEl.classList.add('streaming');try{const r=await fetch('/api/chat-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'Gemini 응답 오류')}sessionId=r.headers.get('X-Session-Id')||sessionId;const reader=r.body.getReader(),decoder=new TextDecoder();let reply='',gotFirst=false;while(true){const {value,done}=await reader.read();if(done)break;if(value){reply+=decoder.decode(value,{stream:true});if(!gotFirst&&reply){gotFirst=true;st.textContent='답변 작성 중...'}renderAssistant(aiEl,reply);chat.scrollTop=chat.scrollHeight}}reply+=decoder.decode();renderAssistant(aiEl,reply);if(reply.startsWith('Gemini 응답 오류:'))throw new Error(reply);st.textContent=''}catch(e){aiEl.remove();setError(st,e.message)}finally{aiEl.classList.remove('streaming');send.disabled=false}};
-input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send.click()}});
-finish.onclick=async()=>{if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}const st=document.getElementById('chatStatus');clearError(st);finish.disabled=true;send.disabled=true;input.disabled=true;st.textContent='학습 대화를 분석하고 AI OFF 문제를 만드는 중...';try{const a=await api('/api/analyze',{session_id:sessionId});delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${x.skill}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+v).join('<br>')}</div></div>`).join('');document.getElementById('analysisSummary').textContent=a.summary;const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="label">${q.skill}</div><p>${q.question}</p><div class="why">확인 이유: ${q.why_this_question}</div><textarea id="answer_${i}" placeholder="AI 도움 없이 직접 작성하세요."></textarea></div>`).join('');aiOffStarted=true;badge.textContent='AI OFF · 독립 수행';st.textContent='';document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'})}catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false}};
-document.getElementById('submitOff').onclick=async()=>{const st=document.getElementById('offStatus');clearError(st);const answers=questions.map((q,i)=>({question_id:q.question_id,answer:document.getElementById(`answer_${i}`).value.trim()}));if(answers.some(a=>!a.answer)){setError(st,'세 문제에 모두 답변한 뒤 제출해주세요.');return}document.getElementById('submitOff').disabled=true;st.textContent='독립 수행 결과를 확인하는 중...';try{const d=await api('/api/off-submit',{session_id:sessionId,answers});document.getElementById('results').innerHTML=d.results.map(r=>{const dg=delegationMap[r.skill]??0;return `<div class="result-card"><div class="skill-head"><strong>${r.skill}</strong><span class="level">${r.level}</span></div><div class="compare"><span>AI 위임 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><strong>${dg}</strong></div><div class="compare"><span>독립 수행 확인</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><strong>${r.score}</strong></div><p class="status">${r.feedback}</p></div>`}).join('');document.getElementById('overall').textContent=d.overall_summary;document.getElementById('resultSection').classList.remove('hidden');st.textContent='AI OFF 결과가 저장되었습니다.';document.getElementById('resultSection').scrollIntoView({behavior:'smooth'})}catch(e){setError(st,e.message);document.getElementById('submitOff').disabled=false}};
+
+send.onclick=async()=>{
+  if(aiOffStarted||requestInFlight)return;
+  const text=input.value.trim();
+  if(!text)return;
+
+  requestInFlight=true;
+  const st=document.getElementById('chatStatus');
+  clearError(st);
+  addMsg('user',text);
+  input.value='';
+  send.disabled=true;
+  finish.disabled=true;
+  st.textContent='첫 답변을 준비하는 중...';
+
+  const aiEl=addMsg('assistant','');
+  aiEl.classList.add('streaming');
+
+  try{
+    const r=await fetch('/api/chat-stream',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({session_id:sessionId,message:text})
+    });
+    if(!r.ok){
+      const d=await r.json().catch(()=>({}));
+      throw new Error(d.detail||'Gemini 응답 오류');
+    }
+
+    sessionId=r.headers.get('X-Session-Id')||sessionId;
+    const reader=r.body.getReader(),decoder=new TextDecoder();
+    let reply='',gotFirst=false;
+
+    while(true){
+      const {value,done}=await reader.read();
+      if(done)break;
+      if(value){
+        reply+=decoder.decode(value,{stream:true});
+        if(!gotFirst&&reply){
+          gotFirst=true;
+          st.textContent='답변 작성 중...';
+        }
+        renderAssistant(aiEl,reply);
+        chat.scrollTop=chat.scrollHeight;
+      }
+    }
+
+    reply+=decoder.decode();
+    renderAssistant(aiEl,reply);
+    if(reply.startsWith('Gemini 응답 오류:'))throw new Error(reply);
+    st.textContent='';
+  }catch(e){
+    aiEl.remove();
+    setError(st,e.message);
+  }finally{
+    aiEl.classList.remove('streaming');
+    requestInFlight=false;
+    send.disabled=false;
+    finish.disabled=false;
+  }
+};
+
+input.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){
+    e.preventDefault();
+    if(!requestInFlight)send.click();
+  }
+});
+
+finish.onclick=async()=>{
+  if(requestInFlight)return;
+  if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}
+  const st=document.getElementById('chatStatus');
+  clearError(st);
+  finish.disabled=true;
+  send.disabled=true;
+  input.disabled=true;
+  st.textContent='학습 대화를 분석하고 AI OFF 문제를 만드는 중...';
+  try{
+    const a=await api('/api/analyze',{session_id:sessionId});
+    delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));
+    document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${x.skill}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+v).join('<br>')}</div></div>`).join('');
+    document.getElementById('analysisSummary').textContent=a.summary;
+
+    const t=await api('/api/off-test',{session_id:sessionId});
+    questions=t.questions;
+    document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="label">${q.skill}</div><p>${q.question}</p><div class="why">확인 이유: ${q.why_this_question}</div><textarea id="answer_${i}" placeholder="AI 도움 없이 직접 작성하세요."></textarea></div>`).join('');
+    aiOffStarted=true;
+    badge.textContent='AI OFF · 독립 수행';
+    st.textContent='';
+    document.getElementById('offSection').classList.remove('hidden');
+    document.getElementById('offSection').scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    setError(st,e.message);
+    finish.disabled=false;
+    send.disabled=false;
+    input.disabled=false;
+  }
+};
+
+document.getElementById('submitOff').onclick=async()=>{
+  const st=document.getElementById('offStatus');
+  clearError(st);
+  const answers=questions.map((q,i)=>({question_id:q.question_id,answer:document.getElementById(`answer_${i}`).value.trim()}));
+  if(answers.some(a=>!a.answer)){setError(st,'세 문제에 모두 답변한 뒤 제출해주세요.');return}
+  document.getElementById('submitOff').disabled=true;
+  st.textContent='독립 수행 결과를 확인하는 중...';
+  try{
+    const d=await api('/api/off-submit',{session_id:sessionId,answers});
+    document.getElementById('results').innerHTML=d.results.map(r=>{
+      const dg=delegationMap[r.skill]??0;
+      return `<div class="result-card"><div class="skill-head"><strong>${r.skill}</strong><span class="level">${r.level}</span></div><div class="compare"><span>AI 위임 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><strong>${dg}</strong></div><div class="compare"><span>독립 수행 확인</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><strong>${r.score}</strong></div><p class="status">${r.feedback}</p></div>`;
+    }).join('');
+    document.getElementById('overall').textContent=d.overall_summary;
+    document.getElementById('resultSection').classList.remove('hidden');
+    st.textContent='AI OFF 결과가 저장되었습니다.';
+    document.getElementById('resultSection').scrollIntoView({behavior:'smooth'});
+  }catch(e){
+    setError(st,e.message);
+    document.getElementById('submitOff').disabled=false;
+  }
+};
 </script>
 </body></html>
