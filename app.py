@@ -127,6 +127,10 @@ def transcript(session_id: str):
     return "\n".join(f"{'학생' if m['role']=='user' else 'AI'}: {m['content']}" for m in messages(session_id))
 
 
+def student_requests(session_id: str):
+    return [m["content"] for m in messages(session_id) if m["role"] == "user"]
+
+
 def structured(response, cls):
     parsed = getattr(response, "parsed", None)
     if parsed is not None:
@@ -297,14 +301,19 @@ def analyze(req: SessionRequest):
 delegation은 이번 세션에서 AI가 해당 핵심 사고를 대신 수행한 정도를 0~100으로 나타낸다.
 단순히 질문했다는 이유만으로 높은 점수를 주지 않는다.
 evidence는 실제 대화에서 확인되는 짧은 근거를 최대 2개 적는다.
-top_skills는 위임 정도가 큰 기능 3개를 순서대로 넣는다.
+top_skills에는 위임 정도가 20 이상인 기능만 최대 3개를 높은 순서대로 넣는다.
+20 이상인 기능이 없으면 top_skills는 빈 배열로 둔다.
 학생의 성향이나 장기 능력을 단정하지 않는다."""
     try:
         r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":AnalysisResult})
         result = structured(r, AnalysisResult)
     except Exception as e:
         raise HTTPException(502, f"Gemini 분석 오류: {type(e).__name__}")
+
     data = result.model_dump()
+    ranked = sorted(data["scores"], key=lambda x: x["delegation"], reverse=True)
+    data["top_skills"] = [x["skill"] for x in ranked if x["delegation"] >= 20][:3]
+
     with connect_db() as c:
         c.execute("INSERT INTO analyses(session_id,result_json) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET result_json=excluded.result_json, created_at=CURRENT_TIMESTAMP", (req.session_id, json.dumps(data, ensure_ascii=False)))
     return data
@@ -314,22 +323,54 @@ top_skills는 위임 정도가 큰 기능 3개를 순서대로 넣는다.
 def off_test(req: SessionRequest):
     client = gemini_client()
     tx = transcript(req.session_id)
+    requests = student_requests(req.session_id)
+
     with connect_db() as c:
         row = c.execute("SELECT result_json FROM analyses WHERE session_id=?", (req.session_id,)).fetchone()
+
     analysis = json.loads(row["result_json"]) if row else analyze(req)
-    top = analysis["top_skills"][:3]
-    prompt = f"""학생의 학습 대화:
+    ranked = sorted(analysis["scores"], key=lambda x: x["delegation"], reverse=True)
+    top = [x["skill"] for x in ranked if x["delegation"] >= 20][:3]
+
+    if not top:
+        raise HTTPException(400, "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.")
+
+    request_list = "\n".join(f"- {text}" for text in requests)
+
+    prompt = f"""다음은 학생의 전체 학습 세션이다.
+
+[학생이 실제로 요청한 내용]
+{request_list}
+
+[전체 대화]
 {tx}
 
-AI 위임이 큰 기능: {', '.join(top)}
+[이번 세션에서 의미 있게 AI에 위임한 사고 기능]
+{', '.join(top)}
 
-각 기능에 대해 학생이 AI 없이 직접 수행할 수 있는지 확인하는 짧은 문제를 정확히 3개 생성하라.
-방금 대화의 실제 주제와 내용을 활용한다.
-단순 암기가 아니라 해당 사고 기능을 직접 수행해야 풀 수 있게 한다.
-각 문제는 2~5분 안에 답할 수 있어야 한다.
-정답이나 모범답안을 질문에 포함하지 않는다.
-skill은 제시된 상위 기능 중 하나를 사용한다.
-evaluation_criteria는 채점 핵심 기준 2~4개를 적는다."""
+학생이 AI 없이 직접 수행할 수 있는지 확인하는 짧은 AI OFF 문제를 정확히 3개 생성하라.
+
+중요한 주제 분배 규칙:
+- 문제를 만들기 전에 학생 요청에서 서로 다른 '학습 주제'를 구분한다.
+- 예: '이차함수'와 '상관계수'는 서로 다른 학습 주제다.
+- 서로 다른 주제가 2개이면 두 주제를 모두 반드시 포함하고 3문제를 2+1로 배분한다.
+- 서로 다른 주제가 3개 이상이면 학습 비중이 큰 주요 주제 3개에서 각각 1문제씩 만든다.
+- 한 주제만 있었다면 그 주제에서 3문제를 만든다.
+- 이전에 다룬 독립적인 주제가 있는데 최신 주제 하나에 3문제를 모두 몰아서는 안 된다.
+- 단순 인사나 같은 주제의 후속 질문은 별도 주제로 세지 않는다.
+
+사고 기능 규칙:
+- skill은 반드시 위에 제시된 의미 있는 위임 기능 중 하나만 사용한다.
+- 위임 기능이 1개뿐이면 그 기능을 여러 문제에서 반복해서 사용해도 된다.
+- 위임 점수가 0이거나 20 미만인 기능을 억지로 검증하지 않는다.
+
+문제 작성 규칙:
+- 방금 대화의 실제 주제와 내용을 활용한다.
+- 단순 암기보다 해당 사고 기능을 직접 수행해야 풀 수 있게 한다.
+- 각 문제는 2~5분 안에 답할 수 있어야 한다.
+- 정답이나 모범답안을 질문에 포함하지 않는다.
+- evaluation_criteria는 채점 핵심 기준 2~4개를 적는다.
+"""
     try:
         r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":OffTestResult})
         result = structured(r, OffTestResult)
