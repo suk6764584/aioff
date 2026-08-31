@@ -38,35 +38,35 @@ button,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cu
 .brand{font-size:20px;font-weight:850;letter-spacing:-.7px}.brand span{color:var(--orange)}
 .mode{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:750;color:var(--body)}.mode-dot{width:8px;height:8px;border-radius:50%;background:var(--blue)}
 
-main{max-width:1160px;margin:0 auto;padding:52px 24px 80px}
-.hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.7fr);gap:48px;align-items:end;margin-bottom:42px}
-.hero-kicker{font-size:13px;font-weight:800;color:var(--orange);margin-bottom:12px}.hero h1{font-size:42px;line-height:1.16;letter-spacing:-1.8px;margin:0;max-width:700px}.hero p{font-size:15px;line-height:1.75;color:var(--body);margin:16px 0 0;max-width:700px}
-.hero-note{border-top:2px solid var(--ink);padding-top:14px}.hero-note strong{display:block;font-size:13px;margin-bottom:7px}.hero-note span{font-size:12px;line-height:1.65;color:var(--body)}
+main{max-width:1190px;margin:0 auto;padding:44px 24px 76px}
+.hero{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(290px,.75fr);gap:56px;align-items:end;margin-bottom:34px}
+.hero-kicker{font-size:13px;font-weight:800;color:var(--orange);margin-bottom:11px}.hero h1{font-size:40px;line-height:1.17;letter-spacing:-1.65px;margin:0;max-width:710px}.hero p{font-size:15px;line-height:1.72;color:var(--body);margin:14px 0 0;max-width:720px}
+.hero-note{border-top:2px solid var(--ink);padding-top:13px}.hero-note strong{display:block;font-size:13px;margin-bottom:6px}.hero-note span{font-size:12px;line-height:1.6;color:var(--body)}
 
-.process{position:relative;display:grid;grid-template-columns:repeat(4,1fr);margin:0 0 30px;padding-top:2px}.process:before{content:"";position:absolute;top:12px;left:7%;right:7%;height:1px;background:var(--line-strong)}
-.process-item{position:relative;padding:0 16px 0 0}.process-dot{width:21px;height:21px;border-radius:50%;background:var(--canvas);border:1px solid var(--line-strong);position:relative;z-index:2;margin-bottom:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--muted)}
+.process{position:relative;display:grid;grid-template-columns:repeat(4,1fr);margin:0 0 26px;padding-top:2px}.process:before{content:"";position:absolute;top:12px;left:5%;right:5%;height:1px;background:var(--line-strong)}
+.process-item{position:relative;padding:0 18px 0 0}.process-dot{width:21px;height:21px;border-radius:50%;background:var(--canvas);border:1px solid var(--line-strong);position:relative;z-index:2;margin-bottom:9px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--muted)}
 .process-item.active .process-dot{background:var(--blue);border-color:var(--blue);color:#fff}.process-item.done .process-dot{background:var(--ink);border-color:var(--ink);color:#fff}.process-item.off.active .process-dot{background:var(--orange);border-color:var(--orange)}
-.process-item strong{display:block;font-size:13px;margin-bottom:3px}.process-item span{display:block;font-size:11px;color:var(--muted);line-height:1.45}
+.process-item strong{display:block;font-size:13px;margin-bottom:2px}.process-item span{display:block;font-size:11px;color:var(--muted);line-height:1.4}
 
-.workspace{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:30px;align-items:start}
-.study-paper{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-.paper-head{padding:21px 24px 17px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.paper-head h2{margin:0;font-size:20px}.paper-head p{margin:6px 0 0;font-size:12px;color:var(--muted);line-height:1.55}.mode-label{font-size:11px;font-weight:850;color:var(--blue);padding-top:3px;white-space:nowrap}
-.chat-area{padding:20px 24px 0}.guide-strip{border-left:3px solid var(--orange);background:#fff7ed;padding:11px 13px;font-size:12px;line-height:1.6;color:var(--body);margin-bottom:16px}.guide-strip strong{color:var(--ink)}
-.chat{height:410px;overflow:auto;padding:0 4px 12px;scrollbar-color:#cfc7bc transparent}.msg-row{display:flex;gap:10px;margin:17px 0;align-items:flex-start}.msg-row.user-row{justify-content:flex-end}.speaker{font-size:10px;font-weight:850;color:var(--blue);padding-top:5px;flex:0 0 24px}.msg{max-width:80%;font-size:14px;line-height:1.67;word-break:break-word}.msg.user{background:var(--blue-soft);color:#244d9d;padding:10px 13px;border-radius:11px 11px 3px 11px;white-space:pre-wrap}.msg.assistant{color:#2d2925;padding:2px 0}.msg.assistant.streaming:after{content:'▍';color:var(--blue);animation:blink .8s steps(1) infinite}.msg.assistant>:first-child{margin-top:0}.msg.assistant>:last-child{margin-bottom:0}.msg.assistant p{margin:6px 0}.msg.assistant ul,.msg.assistant ol{margin:7px 0;padding-left:21px}.msg.assistant li{margin:3px 0}.msg.assistant h1,.msg.assistant h2,.msg.assistant h3,.msg.assistant h4{font-size:1em;margin:12px 0 6px}.msg.assistant code{background:#f4efe8;border-radius:4px;padding:1px 4px}.msg.assistant pre{overflow:auto;background:#f8f4ee;border:1px solid var(--line);border-radius:8px;padding:10px}.msg.assistant blockquote{margin:8px 0;padding-left:11px;border-left:3px solid #d9d1c6;color:#6d665f}.msg.assistant .katex-display{overflow-x:auto;margin:9px 0}@keyframes blink{50%{opacity:0}}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:36px;align-items:start}
+.study-paper{background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.paper-head{padding:20px 24px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.paper-head h2{margin:0;font-size:20px}.paper-head p{margin:5px 0 0;font-size:12px;color:var(--muted);line-height:1.5}.mode-label{font-size:11px;font-weight:850;color:var(--blue);padding-top:3px;white-space:nowrap}
+.chat-area{padding:18px 24px 0}.guide-strip{border-left:3px solid var(--orange);background:#fff7ed;padding:10px 13px;font-size:12px;line-height:1.55;color:var(--body);margin-bottom:14px}.guide-strip strong{color:var(--ink)}
+.chat{height:390px;overflow:auto;padding:0 4px 10px;scrollbar-color:#cfc7bc transparent}.msg-row{display:flex;gap:10px;margin:16px 0;align-items:flex-start}.msg-row.user-row{justify-content:flex-end}.speaker{font-size:10px;font-weight:850;color:var(--blue);padding-top:5px;flex:0 0 24px}.msg{max-width:80%;font-size:14px;line-height:1.65;word-break:break-word}.msg.user{background:var(--blue-soft);color:#244d9d;padding:10px 13px;border-radius:11px 11px 3px 11px;white-space:pre-wrap}.msg.assistant{color:#2d2925;padding:2px 0}.msg.assistant.streaming:after{content:'▍';color:var(--blue);animation:blink .8s steps(1) infinite}.msg.assistant>:first-child{margin-top:0}.msg.assistant>:last-child{margin-bottom:0}.msg.assistant p{margin:6px 0}.msg.assistant ul,.msg.assistant ol{margin:7px 0;padding-left:21px}.msg.assistant li{margin:3px 0}.msg.assistant h1,.msg.assistant h2,.msg.assistant h3,.msg.assistant h4{font-size:1em;margin:12px 0 6px}.msg.assistant code{background:#f4efe8;border-radius:4px;padding:1px 4px}.msg.assistant pre{overflow:auto;background:#f8f4ee;border:1px solid var(--line);border-radius:8px;padding:10px}.msg.assistant blockquote{margin:8px 0;padding-left:11px;border-left:3px solid #d9d1c6;color:#6d665f}.msg.assistant .katex-display{overflow-x:auto;margin:9px 0}@keyframes blink{50%{opacity:0}}
 
-.composer-wrap{padding:0 24px 20px}.composer{border-top:1px solid var(--line);padding-top:15px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}.composer textarea{width:100%;min-height:68px;max-height:150px;resize:vertical;border:1px solid var(--line-strong);border-radius:9px;background:#fff;padding:12px 13px;outline:none;line-height:1.55;color:var(--ink)}.composer textarea:focus{border-color:#91aef0}.composer textarea::placeholder{color:#aaa39a}.send-btn{height:44px;border:0;border-radius:9px;background:var(--ink);color:#fff;padding:0 17px;font-weight:800}.chat-status{min-height:19px;margin:7px 1px 0;font-size:12px;color:var(--muted)}
-.finish-zone{background:var(--orange-soft);border-top:1px solid #f3d7c8;padding:17px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.finish-copy strong{display:block;font-size:14px;margin-bottom:4px}.finish-copy span{display:block;font-size:12px;line-height:1.55;color:#765e50}.finish-btn{border:0;background:var(--orange);color:#fff;border-radius:10px;padding:12px 17px;font-weight:850;white-space:nowrap}
+.composer-wrap{padding:0 24px 18px}.composer{border-top:1px solid var(--line);padding-top:14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}.composer textarea{width:100%;min-height:64px;max-height:145px;resize:vertical;border:1px solid var(--line-strong);border-radius:9px;background:#fff;padding:12px 13px;outline:none;line-height:1.55;color:var(--ink)}.composer textarea:focus{border-color:#91aef0}.composer textarea::placeholder{color:#aaa39a}.send-btn{height:44px;border:0;border-radius:9px;background:var(--ink);color:#fff;padding:0 17px;font-weight:800}.chat-status{min-height:18px;margin:6px 1px 0;font-size:12px;color:var(--muted)}
+.finish-zone{background:var(--orange-soft);border-top:1px solid #f3d7c8;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.finish-copy strong{display:block;font-size:14px;margin-bottom:3px}.finish-copy span{display:block;font-size:12px;line-height:1.5;color:#765e50}.finish-btn{border:0;background:var(--orange);color:#fff;border-radius:9px;padding:12px 17px;font-weight:850;white-space:nowrap}
 
-.study-side{position:sticky;top:90px;padding-top:3px}.side-top{border-top:2px solid var(--ink);padding:14px 0 16px}.side-kicker{font-size:11px;color:var(--muted);font-weight:800;margin-bottom:5px}.side-stage{font-size:20px;font-weight:820;line-height:1.3}.side-help{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;font-size:12px;line-height:1.65;color:var(--body)}.side-help b{color:var(--ink)}.skills-title{font-size:12px;font-weight:850;margin:16px 0 6px}.empty-side{font-size:12px;color:var(--muted);line-height:1.6}.skill{padding:11px 0;border-bottom:1px solid var(--line)}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:12px}.bar{height:5px;background:#e9e3da;overflow:hidden;margin-top:7px}.fill{height:100%;background:var(--blue)}.offfill{height:100%;background:var(--green)}.evidence{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px}.analysis-summary{font-size:12px;color:var(--body);line-height:1.6;margin-top:12px}
+.study-side{position:sticky;top:90px;padding-top:1px}.side-top{border-top:2px solid var(--ink);padding:12px 0 14px}.side-kicker{font-size:11px;color:var(--muted);font-weight:800;margin-bottom:4px}.side-stage{font-size:19px;font-weight:820;line-height:1.3}.side-help{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 0;font-size:12px;line-height:1.55;color:var(--body)}.side-help b{color:var(--ink)}.skills-title{font-size:12px;font-weight:850;margin:14px 0 4px}.empty-side{font-size:12px;color:var(--muted);line-height:1.55}.skill{padding:10px 0;border-bottom:1px solid var(--line)}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:12px}.bar{height:5px;background:#e9e3da;overflow:hidden;margin-top:6px}.fill{height:100%;background:var(--blue)}.offfill{height:100%;background:var(--green)}.evidence{font-size:11px;color:var(--muted);line-height:1.45;margin-top:5px}.analysis-summary{font-size:12px;color:var(--body);line-height:1.55;margin-top:10px}
 
-.section{margin-top:34px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}.section.off-mode{border-top:4px solid var(--orange)}.section.result-mode{border-top:4px solid var(--green)}
-.section-head{padding:25px 28px 19px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.section-eyebrow{font-size:11px;font-weight:850;color:var(--orange);margin-bottom:7px}.result-mode .section-eyebrow{color:var(--green)}.section-head h2{margin:0;font-size:26px;letter-spacing:-.8px}.section-head p{margin:7px 0 0;font-size:13px;line-height:1.6;color:var(--body);max-width:680px}.section-body{padding:8px 28px 26px}
-.off-notice{padding:14px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.6;color:var(--body)}.off-notice b{color:var(--ink);margin-right:5px}.question{padding:25px 0;border-bottom:1px solid var(--line)}.question:last-child{border-bottom:0}.q-top{display:flex;align-items:center;gap:10px;margin-bottom:9px}.q-no{font-size:12px;font-weight:900;color:var(--orange)}.q-skill{font-size:12px;color:var(--muted);font-weight:750}.q-text{font-size:16px;line-height:1.7;margin:0 0 10px}.why{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px}.why b{color:var(--body)}.answer-box{width:100%;min-height:115px;border:1px solid var(--line-strong);border-radius:9px;padding:13px;resize:vertical;outline:none;line-height:1.6;background:#fff}.answer-box:focus{border-color:#e7a388}.submit-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding-top:20px}.submit-status{font-size:12px;color:var(--muted)}.primary-btn{border:0;background:var(--orange);color:#fff;border-radius:10px;padding:12px 18px;font-weight:850}
+.section{margin-top:32px;background:var(--paper);border:1px solid var(--line);border-radius:10px;overflow:hidden}.section.off-mode{border-top:4px solid var(--orange)}.section.result-mode{border-top:4px solid var(--green)}
+.section-head{padding:23px 28px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.section-eyebrow{font-size:11px;font-weight:850;color:var(--orange);margin-bottom:6px}.result-mode .section-eyebrow{color:var(--green)}.section-head h2{margin:0;font-size:24px;letter-spacing:-.7px}.section-head p{margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--body);max-width:680px}.section-body{padding:7px 28px 24px}
+.off-notice{padding:13px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.55;color:var(--body)}.off-notice b{color:var(--ink);margin-right:5px}.question{padding:23px 0;border-bottom:1px solid var(--line)}.question:last-child{border-bottom:0}.q-top{display:flex;align-items:center;gap:10px;margin-bottom:8px}.q-no{font-size:12px;font-weight:900;color:var(--orange)}.q-skill{font-size:12px;color:var(--muted);font-weight:750}.q-text{font-size:16px;line-height:1.67;margin:0 0 9px}.why{font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:11px}.why b{color:var(--body)}.answer-box{width:100%;min-height:110px;border:1px solid var(--line-strong);border-radius:9px;padding:13px;resize:vertical;outline:none;line-height:1.6;background:#fff}.answer-box:focus{border-color:#e7a388}.submit-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding-top:18px}.submit-status{font-size:12px;color:var(--muted)}.primary-btn{border:0;background:var(--orange);color:#fff;border-radius:9px;padding:12px 18px;font-weight:850}
 
-.result-guide{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}.guide-item{border-top:2px solid var(--blue);padding-top:10px;font-size:12px;line-height:1.6;color:var(--body)}.guide-item.green{border-top-color:var(--green)}.guide-item strong{display:block;font-size:13px;color:var(--ink);margin-bottom:4px}.result-card{padding:24px 0;border-bottom:1px solid var(--line)}.result-card:last-child{border-bottom:0}.result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:15px}.result-skill{font-size:17px;font-weight:830}.level{font-size:12px;font-weight:850;padding:6px 9px;border-radius:7px}.level.good{background:var(--green-soft);color:#176a4e}.level.mid{background:var(--amber-soft);color:#8e5c16}.level.retry{background:var(--orange-soft);color:#ad4a29}.compare{display:grid;grid-template-columns:128px minmax(0,1fr) 36px;gap:12px;align-items:center;margin:11px 0;font-size:12px;color:var(--body)}.compare .bar{margin:0}.metric-score{font-weight:850;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}.feedback{font-size:13px;line-height:1.67;color:var(--body);margin:14px 0 0}.overall{margin-top:20px;border-left:3px solid var(--green);padding:3px 0 3px 13px;font-size:13px;line-height:1.65;color:var(--body)}.footer-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:14px}.restart-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.restart-help{font-size:12px;color:var(--muted)}.restart-btn{border:1px solid var(--line-strong);background:#fff;color:var(--ink);border-radius:9px;padding:11px 15px;font-weight:800}
+.result-guide{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:18px 0;border-bottom:1px solid var(--line)}.guide-item{border-top:2px solid var(--blue);padding-top:9px;font-size:12px;line-height:1.55;color:var(--body)}.guide-item.green{border-top-color:var(--green)}.guide-item strong{display:block;font-size:13px;color:var(--ink);margin-bottom:4px}.result-card{padding:22px 0;border-bottom:1px solid var(--line)}.result-card:last-child{border-bottom:0}.result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:14px}.result-skill{font-size:16px;font-weight:830}.level{font-size:12px;font-weight:850;padding:6px 9px;border-radius:7px}.level.good{background:var(--green-soft);color:#176a4e}.level.mid{background:var(--amber-soft);color:#8e5c16}.level.retry{background:var(--orange-soft);color:#ad4a29}.compare{display:grid;grid-template-columns:128px minmax(0,1fr) 36px;gap:12px;align-items:center;margin:10px 0;font-size:12px;color:var(--body)}.compare .bar{margin:0}.metric-score{font-weight:850;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}.feedback{font-size:13px;line-height:1.62;color:var(--body);margin:13px 0 0}.overall{margin-top:18px;border-left:3px solid var(--green);padding:3px 0 3px 13px;font-size:13px;line-height:1.6;color:var(--body)}.footer-note{font-size:11px;line-height:1.5;color:var(--muted);margin-top:13px}.restart-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px;padding-top:17px;border-top:1px solid var(--line)}.restart-help{font-size:12px;color:var(--muted)}.restart-btn{border:1px solid var(--line-strong);background:#fff;color:var(--ink);border-radius:9px;padding:11px 15px;font-weight:800}
 
-@media(max-width:900px){main{padding:38px 18px 64px}.hero{grid-template-columns:1fr;gap:20px}.hero-note{max-width:500px}.workspace{grid-template-columns:1fr}.study-side{position:static}.process{grid-template-columns:repeat(2,1fr);gap:18px 0}.process:before{display:none}.process-item{border-top:1px solid var(--line);padding-top:11px}.result-guide{grid-template-columns:1fr}.hero h1{font-size:35px}}
-@media(max-width:600px){.topbar{height:58px;padding:0 16px}main{padding:30px 14px 54px}.hero h1{font-size:29px}.process{grid-template-columns:1fr;gap:12px}.process-item{display:grid;grid-template-columns:26px 1fr;column-gap:8px}.process-dot{grid-row:1/3;margin:0}.process-item strong,.process-item span{grid-column:2}.paper-head,.section-head{padding:18px}.chat-area{padding:16px 16px 0}.composer-wrap{padding:0 16px 16px}.finish-zone{padding:15px 16px;flex-direction:column;align-items:stretch}.finish-btn,.primary-btn,.restart-btn{width:100%}.section-body{padding:6px 18px 20px}.section-head h2{font-size:22px}.msg{max-width:88%}.chat{height:380px}.submit-row,.restart-row{flex-direction:column;align-items:stretch}.compare{grid-template-columns:108px minmax(0,1fr) 32px;gap:8px}}
+@media(max-width:900px){main{padding:36px 18px 62px}.hero{grid-template-columns:1fr;gap:20px}.hero-note{max-width:520px}.workspace{grid-template-columns:1fr}.study-side{position:static}.process{grid-template-columns:repeat(2,1fr);gap:18px 0}.process:before{display:none}.process-item{border-top:1px solid var(--line);padding-top:11px}.result-guide{grid-template-columns:1fr}.hero h1{font-size:34px}}
+@media(max-width:600px){.topbar{height:58px;padding:0 16px}main{padding:28px 14px 52px}.hero h1{font-size:28px}.process{grid-template-columns:1fr;gap:12px}.process-item{display:grid;grid-template-columns:26px 1fr;column-gap:8px}.process-dot{grid-row:1/3;margin:0}.process-item strong,.process-item span{grid-column:2}.paper-head,.section-head{padding:18px}.chat-area{padding:16px 16px 0}.composer-wrap{padding:0 16px 16px}.finish-zone{padding:15px 16px;flex-direction:column;align-items:stretch}.finish-btn,.primary-btn,.restart-btn{width:100%}.section-body{padding:6px 18px 20px}.section-head h2{font-size:22px}.msg{max-width:88%}.chat{height:370px}.submit-row,.restart-row{flex-direction:column;align-items:stretch}.compare{grid-template-columns:108px minmax(0,1fr) 32px;gap:8px}}
 </style>
 </head>
 <body>
@@ -78,28 +78,28 @@ main{max-width:1160px;margin:0 auto;padding:52px 24px 80px}
 <main>
   <section class="hero">
     <div>
-      <div class="hero-kicker">AI와 공부한 다음 단계</div>
-      <h1>AI가 해준 것과<br>내가 할 수 있는 것을 나눠봅니다.</h1>
-      <p>먼저 AI와 자유롭게 공부하세요. 대화를 마치면 이번 학습에서 AI에 맡긴 사고를 찾아, 그 부분을 내가 직접 해보는 문제 3개로 이어집니다.</p>
+      <div class="hero-kicker">AI와 공부한 뒤</div>
+      <h1>AI에게 물어본 내용,<br>이번엔 내가 직접 해봅니다.</h1>
+      <p>공부할 내용을 AI와 이야기해 보세요. 대화를 마치면 방금 대화에서 AI 도움을 많이 받은 부분을 골라, 직접 풀어볼 문제 3개가 나옵니다.</p>
     </div>
-    <div class="hero-note"><strong>연습문제는 어떻게 나오나요?</strong><span>AI와 대화가 끝났을 때 <b>‘대화 마치고 문제 만들기’</b>를 누르면 됩니다. 따로 문제를 고를 필요 없이 방금 대화를 기준으로 3개가 만들어집니다.</span></div>
+    <div class="hero-note"><strong>문제는 언제 나오나요?</strong><span>공부를 마친 뒤 <b>‘대화 마치고 문제 만들기’</b>를 누르면 됩니다. 방금 나눈 대화를 바탕으로 문제 3개가 바로 나옵니다.</span></div>
   </section>
 
   <section class="process" aria-label="이용 순서">
-    <div class="process-item active" id="process1"><div class="process-dot">1</div><strong>AI와 공부</strong><span>질문하고 설명을 듣습니다.</span></div>
-    <div class="process-item" id="process2"><div class="process-dot">2</div><strong>대화 분석</strong><span>AI에 맡긴 사고를 찾습니다.</span></div>
-    <div class="process-item off" id="process3"><div class="process-dot">3</div><strong>직접 풀기</strong><span>AI 없이 문제 3개를 풉니다.</span></div>
-    <div class="process-item" id="process4"><div class="process-dot">4</div><strong>결과 보기</strong><span>함께한 부분과 혼자 한 부분을 봅니다.</span></div>
+    <div class="process-item active" id="process1"><div class="process-dot">1</div><strong>AI와 공부하기</strong><span>질문하고 설명을 듣습니다.</span></div>
+    <div class="process-item" id="process2"><div class="process-dot">2</div><strong>대화 마치기</strong><span>공부한 내용을 정리합니다.</span></div>
+    <div class="process-item off" id="process3"><div class="process-dot">3</div><strong>직접 풀어보기</strong><span>AI 없이 문제 3개를 풉니다.</span></div>
+    <div class="process-item" id="process4"><div class="process-dot">4</div><strong>결과 확인하기</strong><span>AI 도움과 내 답변을 함께 봅니다.</span></div>
   </section>
 
   <div class="workspace">
     <section class="study-paper">
       <div class="paper-head">
-        <div><h2>학습 대화</h2><p>공부할 내용을 자유롭게 물어보세요. 충분히 공부한 뒤 아래 버튼으로 다음 단계로 넘어갑니다.</p></div>
+        <div><h2>학습 대화</h2><p>궁금한 내용을 자유롭게 물어보세요. 공부가 끝나면 아래 버튼을 눌러 다음 단계로 넘어갑니다.</p></div>
         <div class="mode-label">AI ON</div>
       </div>
       <div class="chat-area">
-        <div class="guide-strip"><strong>지금은 AI와 함께 공부하는 시간이에요.</strong> 대화를 마치면 AI 채팅은 잠시 멈추고, 내가 직접 풀어보는 단계로 바뀝니다.</div>
+        <div class="guide-strip"><strong>지금은 AI와 함께 공부하는 단계입니다.</strong> 공부가 끝나면 아래 버튼을 눌러주세요. 그다음부터는 AI 없이 문제를 풀게 됩니다.</div>
         <div id="chat" class="chat"></div>
       </div>
       <div class="composer-wrap">
@@ -110,26 +110,26 @@ main{max-width:1160px;margin:0 auto;padding:52px 24px 80px}
         <div id="chatStatus" class="chat-status"></div>
       </div>
       <div class="finish-zone">
-        <div class="finish-copy"><strong>공부가 끝났다면, 이제 직접 해볼 차례예요.</strong><span>버튼을 누르면 대화를 분석한 뒤 AI OFF 문제 3개가 바로 만들어집니다.</span></div>
-        <button id="finish" class="finish-btn">대화 마치고 문제 3개 만들기 →</button>
+        <div class="finish-copy"><strong>충분히 공부했나요?</strong><span>버튼을 누르면 방금 대화에서 직접 확인해볼 문제 3개가 나옵니다.</span></div>
+        <button id="finish" class="finish-btn">대화 마치고 문제 만들기 →</button>
       </div>
     </section>
 
     <aside class="study-side">
-      <div class="side-top"><div class="side-kicker" id="stageStep">1 / 4</div><div class="side-stage" id="stageText">AI와 학습 중</div></div>
-      <div class="side-help"><b>AI에 맡긴 정도</b>는 이번 대화에서 해당 사고를 AI가 대신 수행한 정도예요. <b>0</b>에 가까우면 내가 직접 한 편이고, <b>100</b>에 가까우면 AI에 많이 맡긴 편입니다.</div>
-      <div class="skills-title">이번 대화에서 확인한 사고 기능</div>
-      <div id="skills"><div class="empty-side">대화를 마치면 여기에 자료 탐색, 주장 구성, 근거 판단 같은 사고 기능별 결과가 표시됩니다.</div></div>
+      <div class="side-top"><div class="side-kicker" id="stageStep">1 / 4</div><div class="side-stage" id="stageText">AI와 공부 중</div></div>
+      <div class="side-help"><b>AI에 맡긴 정도</b>는 이 대화에서 해당 사고를 AI가 얼마나 대신했는지를 뜻합니다. <b>0</b>은 거의 직접 한 경우, <b>100</b>은 대부분 AI 도움을 받은 경우입니다.</div>
+      <div class="skills-title">AI 도움을 받은 부분</div>
+      <div id="skills"><div class="empty-side">대화를 마치면 사고 기능별로 얼마나 AI 도움을 받았는지 여기에 표시됩니다.</div></div>
       <div id="analysisSummary" class="analysis-summary"></div>
     </aside>
   </div>
 
   <section id="offSection" class="section off-mode hidden">
     <div class="section-head">
-      <div><div class="section-eyebrow">AI OFF</div><h2>이제 내가 직접 해볼 문제예요.</h2><p>방금 대화에서 AI에 맡겼던 사고를 내가 직접 수행할 수 있는지 확인합니다. 세 문제를 모두 작성하면 결과를 볼 수 있어요.</p></div>
+      <div><div class="section-eyebrow">AI OFF</div><h2>이제 혼자 풀어볼 차례예요.</h2><p>방금 공부한 내용에서 문제 3개가 나왔습니다. AI 채팅은 잠시 꺼두고 직접 답해보세요.</p></div>
     </div>
     <div class="section-body">
-      <div class="off-notice"><b>이 단계에서는 AI 채팅을 사용하지 않아요.</b> 정답을 맞히는 것만보다, 방금 공부한 내용을 내 방식으로 생각하고 설명하는 것이 중요합니다.</div>
+      <div class="off-notice"><b>완벽하게 쓰려고 하지 않아도 괜찮아요.</b> 내가 이해한 내용을 내 말로 설명해 보는 것이 중요합니다.</div>
       <div id="questions"></div>
       <div class="submit-row"><div id="offStatus" class="submit-status"></div><button id="submitOff" class="primary-btn">답변 제출하고 결과 보기 →</button></div>
     </div>
@@ -137,17 +137,17 @@ main{max-width:1160px;margin:0 auto;padding:52px 24px 80px}
 
   <section id="resultSection" class="section result-mode hidden">
     <div class="section-head">
-      <div><div class="section-eyebrow">이번 학습 결과</div><h2>AI와 한 부분, 내가 직접 한 부분을 같이 봐요.</h2><p>두 숫자는 서로 다른 뜻이라서 높고 낮음만 단순 비교하면 안 됩니다. 아래 설명을 먼저 보고 결과를 확인하세요.</p></div>
+      <div><div class="section-eyebrow">이번 학습 결과</div><h2>AI 도움을 받은 부분과 직접 해낸 결과를 같이 봅니다.</h2><p>두 숫자는 뜻이 다릅니다. 아래 설명을 보고 이번 학습을 확인해 보세요.</p></div>
     </div>
     <div class="section-body">
       <div class="result-guide">
-        <div class="guide-item"><strong>AI에 맡긴 정도</strong>AI와 대화할 때 해당 사고를 AI가 대신 수행한 정도입니다. <b>0에 가까울수록 내가 직접 했고, 100에 가까울수록 AI에 많이 맡겼어요.</b></div>
-        <div class="guide-item green"><strong>혼자 수행한 결과</strong>AI OFF 문제에서 내가 직접 수행한 결과입니다. <b>100에 가까울수록 이번 문제의 평가기준을 충실하게 수행했어요.</b></div>
+        <div class="guide-item"><strong>AI에 맡긴 정도</strong>AI와 대화할 때 해당 사고를 AI가 대신한 정도입니다. <b>0에 가까우면 직접 한 부분이 많고, 100에 가까우면 AI가 대신한 부분이 많습니다.</b></div>
+        <div class="guide-item green"><strong>혼자 수행한 결과</strong>AI 없이 문제에 답한 결과입니다. <b>100에 가까울수록 이번 문제에서 요구한 내용을 잘 해냈다는 뜻입니다.</b></div>
       </div>
       <div id="results"></div>
       <div id="overall" class="overall"></div>
       <div class="footer-note">이 결과는 이번 학습에서의 수행만 보여줍니다. 학생의 장기적인 능력이나 성향을 판단하는 점수가 아닙니다.</div>
-      <div class="restart-row"><span class="restart-help">다른 주제로 다시 공부하려면 새 학습을 시작하세요.</span><button id="newSession" class="restart-btn">새 학습 시작</button></div>
+      <div class="restart-row"><span class="restart-help">다른 주제로 공부하려면 새 학습을 시작하세요.</span><button id="newSession" class="restart-btn">새 학습 시작</button></div>
     </div>
   </section>
 </main>
@@ -158,7 +158,7 @@ const chat=document.getElementById('chat'),input=document.getElementById('input'
 const stageStep=document.getElementById('stageStep'),stageText=document.getElementById('stageText');
 const processItems=[1,2,3,4].map(i=>document.getElementById(`process${i}`));
 
-function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function esc(v){return String(v??'').replace(/[&<>'\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','\"':'&quot;'}[c]));}
 function setStage(step,text){stageStep.textContent=`${step} / 4`;stageText.textContent=text;processItems.forEach((el,i)=>{el.classList.toggle('done',i<step-1);el.classList.toggle('active',i===step-1);});}
 function friendlyLevel(level){if(level==='확인됨')return {text:'잘했어요!',cls:'good'};if(level==='부분 확인')return {text:'조금만 더 연습해봐요',cls:'mid'};return {text:'한 번 더 공부해볼까요?',cls:'retry'};}
 function renderAssistant(el,content){if(window.marked&&window.DOMPurify){const html=marked.parse(content,{breaks:true,gfm:true});el.innerHTML=DOMPurify.sanitize(html);if(window.renderMathInElement){renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});}}else{el.textContent=content;}}
@@ -180,9 +180,9 @@ input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventD
 
 finish.onclick=async()=>{
   if(requestInFlight)return;if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}
-  const st=document.getElementById('chatStatus');clearError(st);finish.disabled=true;send.disabled=true;input.disabled=true;st.textContent='대화를 살펴보고 문제를 만들고 있어요...';setStage(2,'대화 분석 중');
-  try{const a=await api('/api/analyze',{session_id:sessionId});delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${esc(x.skill)}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+esc(v)).join('<br>')}</div></div>`).join('');document.getElementById('analysisSummary').textContent=a.summary;const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="q-top"><span class="q-no">문제 ${i+1}</span><span class="q-skill">${esc(q.skill)}</span></div><p class="q-text">${esc(q.question)}</p><div class="why"><b>이 문제를 내는 이유</b> · ${esc(q.why_this_question)}</div><textarea class="answer-box" id="answer_${i}" placeholder="AI 도움 없이 직접 작성해 보세요."></textarea></div>`).join('');aiOffStarted=true;badge.querySelector('span:last-child').textContent='AI OFF';badge.querySelector('.mode-dot').style.background='var(--orange)';st.textContent='';setStage(3,'AI 없이 직접 풀기');document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'});}
-  catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false;setStage(1,'AI와 학습 중');}
+  const st=document.getElementById('chatStatus');clearError(st);finish.disabled=true;send.disabled=true;input.disabled=true;st.textContent='방금 대화를 정리하고 문제를 만들고 있어요...';setStage(2,'대화를 정리하는 중');
+  try{const a=await api('/api/analyze',{session_id:sessionId});delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${esc(x.skill)}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+esc(v)).join('<br>')}</div></div>`).join('');document.getElementById('analysisSummary').textContent=a.summary;const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="q-top"><span class="q-no">문제 ${i+1}</span><span class="q-skill">${esc(q.skill)}</span></div><p class="q-text">${esc(q.question)}</p><div class="why"><b>이 문제를 내는 이유</b> · ${esc(q.why_this_question)}</div><textarea class="answer-box" id="answer_${i}" placeholder="AI 도움 없이 직접 작성해 보세요."></textarea></div>`).join('');aiOffStarted=true;badge.querySelector('span:last-child').textContent='AI OFF';badge.querySelector('.mode-dot').style.background='var(--orange)';st.textContent='';setStage(3,'혼자 풀어보는 중');document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'});}
+  catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false;setStage(1,'AI와 공부 중');}
 };
 
 document.getElementById('submitOff').onclick=async()=>{
