@@ -11,163 +11,143 @@
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/contrib/auto-render.min.js"></script>
 <style>
 :root{
-  --bg:#f6f7f9;
-  --surface:#ffffff;
-  --surface-soft:#f9fafb;
-  --text:#17191d;
-  --muted:#68707d;
-  --line:#e5e8ed;
-  --line-strong:#d6dbe3;
-  --blue:#2f6fed;
+  --canvas:#f6f1e8;
+  --paper:#fffdf9;
+  --paper-strong:#ffffff;
+  --ink:#24211d;
+  --body:#5b5650;
+  --muted:#8a837a;
+  --line:#e3ddd3;
+  --line-strong:#d3ccc1;
+  --blue:#356fe8;
   --blue-soft:#edf3ff;
-  --green:#15966b;
-  --green-soft:#eaf7f1;
-  --amber:#b46a12;
-  --amber-soft:#fff5e7;
-  --ink:#20242b;
-  --radius:14px;
+  --orange:#f06a3c;
+  --orange-soft:#fff0e7;
+  --green:#2e8a66;
+  --green-soft:#eaf6f0;
+  --amber:#b77722;
+  --amber-soft:#fff3df;
+  --radius:12px;
 }
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
-body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;background:var(--bg);color:var(--text);letter-spacing:-.15px}
-button,textarea{font:inherit}
-button{cursor:pointer}
-button:disabled{cursor:not-allowed;opacity:.5}
-.hidden{display:none!important}
+body{margin:0;background:var(--canvas);color:var(--ink);font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",sans-serif;letter-spacing:-.2px}
+button,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:not-allowed}.hidden{display:none!important}.error{color:#c94343!important}
 
-.topbar{height:64px;background:rgba(255,255,255,.96);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:20;backdrop-filter:blur(8px)}
-.brand-wrap{display:flex;align-items:baseline;gap:10px}.brand{font-size:19px;font-weight:850;letter-spacing:-.5px}.brand-sub{font-size:12px;color:var(--muted)}
-.mode{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:#3c4655}.mode-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.topbar{height:66px;border-bottom:1px solid var(--line);background:rgba(255,253,249,.94);display:flex;align-items:center;justify-content:space-between;padding:0 30px;position:sticky;top:0;z-index:20;backdrop-filter:blur(10px)}
+.brand{font-size:20px;font-weight:850;letter-spacing:-.7px}.brand span{color:var(--orange)}
+.mode{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:750;color:var(--body)}.mode-dot{width:8px;height:8px;border-radius:50%;background:var(--blue)}
 
-main{max-width:1180px;margin:0 auto;padding:42px 22px 72px}
-.intro{padding:0 4px 26px}.eyebrow{font-size:13px;font-weight:800;color:var(--blue);margin-bottom:10px}.intro h1{font-size:34px;line-height:1.2;letter-spacing:-1.15px;margin:0 0 12px}.intro p{max-width:720px;margin:0;color:var(--muted);font-size:15px;line-height:1.7}
+main{max-width:1160px;margin:0 auto;padding:52px 24px 80px}
+.hero{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.7fr);gap:48px;align-items:end;margin-bottom:42px}
+.hero-kicker{font-size:13px;font-weight:800;color:var(--orange);margin-bottom:12px}.hero h1{font-size:42px;line-height:1.16;letter-spacing:-1.8px;margin:0;max-width:700px}.hero p{font-size:15px;line-height:1.75;color:var(--body);margin:16px 0 0;max-width:700px}
+.hero-note{border-top:2px solid var(--ink);padding-top:14px}.hero-note strong{display:block;font-size:13px;margin-bottom:7px}.hero-note span{font-size:12px;line-height:1.65;color:var(--body)}
 
-.journey{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:grid;grid-template-columns:repeat(4,1fr);overflow:hidden;margin-bottom:22px}
-.journey-step{padding:17px 18px;min-height:82px;position:relative}.journey-step+.journey-step{border-left:1px solid var(--line)}
-.step-no{display:block;font-size:11px;font-weight:850;color:var(--blue);margin-bottom:6px}.journey-step strong{display:block;font-size:14px;margin-bottom:3px}.journey-step span:last-child{font-size:12px;color:var(--muted);line-height:1.45}
+.process{position:relative;display:grid;grid-template-columns:repeat(4,1fr);margin:0 0 30px;padding-top:2px}.process:before{content:"";position:absolute;top:12px;left:7%;right:7%;height:1px;background:var(--line-strong)}
+.process-item{position:relative;padding:0 16px 0 0}.process-dot{width:21px;height:21px;border-radius:50%;background:var(--canvas);border:1px solid var(--line-strong);position:relative;z-index:2;margin-bottom:10px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--muted)}
+.process-item.active .process-dot{background:var(--blue);border-color:var(--blue);color:#fff}.process-item.done .process-dot{background:var(--ink);border-color:var(--ink);color:#fff}.process-item.off.active .process-dot{background:var(--orange);border-color:var(--orange)}
+.process-item strong{display:block;font-size:13px;margin-bottom:3px}.process-item span{display:block;font-size:11px;color:var(--muted);line-height:1.45}
 
-.workspace{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}
-.panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:20px 22px 16px;border-bottom:1px solid var(--line)}
-.panel-title{margin:0;font-size:18px;letter-spacing:-.4px}.panel-desc{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.55}
-.stage-chip{font-size:11px;font-weight:800;color:var(--blue);background:var(--blue-soft);padding:6px 9px;border-radius:7px;white-space:nowrap}
+.workspace{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:30px;align-items:start}
+.study-paper{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.paper-head{padding:21px 24px 17px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.paper-head h2{margin:0;font-size:20px}.paper-head p{margin:6px 0 0;font-size:12px;color:var(--muted);line-height:1.55}.mode-label{font-size:11px;font-weight:850;color:var(--blue);padding-top:3px;white-space:nowrap}
+.chat-area{padding:20px 24px 0}.guide-strip{border-left:3px solid var(--orange);background:#fff7ed;padding:11px 13px;font-size:12px;line-height:1.6;color:var(--body);margin-bottom:16px}.guide-strip strong{color:var(--ink)}
+.chat{height:410px;overflow:auto;padding:0 4px 12px;scrollbar-color:#cfc7bc transparent}.msg-row{display:flex;gap:10px;margin:17px 0;align-items:flex-start}.msg-row.user-row{justify-content:flex-end}.speaker{font-size:10px;font-weight:850;color:var(--blue);padding-top:5px;flex:0 0 24px}.msg{max-width:80%;font-size:14px;line-height:1.67;word-break:break-word}.msg.user{background:var(--blue-soft);color:#244d9d;padding:10px 13px;border-radius:11px 11px 3px 11px;white-space:pre-wrap}.msg.assistant{color:#2d2925;padding:2px 0}.msg.assistant.streaming:after{content:'▍';color:var(--blue);animation:blink .8s steps(1) infinite}.msg.assistant>:first-child{margin-top:0}.msg.assistant>:last-child{margin-bottom:0}.msg.assistant p{margin:6px 0}.msg.assistant ul,.msg.assistant ol{margin:7px 0;padding-left:21px}.msg.assistant li{margin:3px 0}.msg.assistant h1,.msg.assistant h2,.msg.assistant h3,.msg.assistant h4{font-size:1em;margin:12px 0 6px}.msg.assistant code{background:#f4efe8;border-radius:4px;padding:1px 4px}.msg.assistant pre{overflow:auto;background:#f8f4ee;border:1px solid var(--line);border-radius:8px;padding:10px}.msg.assistant blockquote{margin:8px 0;padding-left:11px;border-left:3px solid #d9d1c6;color:#6d665f}.msg.assistant .katex-display{overflow-x:auto;margin:9px 0}@keyframes blink{50%{opacity:0}}
 
-.chat-wrap{padding:18px 20px 20px}.chat{height:430px;overflow:auto;padding:2px 4px 16px;scrollbar-color:#cfd5de transparent}
-.msg-row{display:flex;gap:9px;margin:16px 0;align-items:flex-start}.msg-row.user-row{justify-content:flex-end}.speaker{width:28px;height:28px;border-radius:8px;background:#eef1f5;color:#4e5968;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;flex:0 0 auto;margin-top:2px}
-.msg{max-width:78%;font-size:14px;line-height:1.65;word-break:break-word}.msg.user{background:var(--blue);color:#fff;padding:10px 13px;border-radius:13px 13px 4px 13px;white-space:pre-wrap}.msg.assistant{padding:2px 0;color:#252a32}.msg.assistant.streaming:after{content:'▍';display:inline-block;color:var(--blue);animation:blink .8s steps(1) infinite}.msg.assistant>:first-child{margin-top:0}.msg.assistant>:last-child{margin-bottom:0}.msg.assistant p{margin:6px 0}.msg.assistant ul,.msg.assistant ol{margin:7px 0;padding-left:21px}.msg.assistant li{margin:3px 0}.msg.assistant h1,.msg.assistant h2,.msg.assistant h3,.msg.assistant h4{font-size:1em;margin:12px 0 6px}.msg.assistant code{background:#f0f2f5;border-radius:4px;padding:1px 4px}.msg.assistant pre{overflow:auto;background:#f6f7f9;border:1px solid var(--line);border-radius:8px;padding:10px}.msg.assistant blockquote{margin:8px 0;padding-left:11px;border-left:3px solid #cfd5df;color:#596273}.msg.assistant .katex-display{overflow-x:auto;margin:9px 0}
-.system-note{background:var(--surface-soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px;color:#4e5968;font-size:13px;line-height:1.6;margin:0 0 18px}.system-note strong{color:var(--text)}
-@keyframes blink{50%{opacity:0}}
+.composer-wrap{padding:0 24px 20px}.composer{border-top:1px solid var(--line);padding-top:15px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}.composer textarea{width:100%;min-height:68px;max-height:150px;resize:vertical;border:1px solid var(--line-strong);border-radius:9px;background:#fff;padding:12px 13px;outline:none;line-height:1.55;color:var(--ink)}.composer textarea:focus{border-color:#91aef0}.composer textarea::placeholder{color:#aaa39a}.send-btn{height:44px;border:0;border-radius:9px;background:var(--ink);color:#fff;padding:0 17px;font-weight:800}.chat-status{min-height:19px;margin:7px 1px 0;font-size:12px;color:var(--muted)}
+.finish-zone{background:var(--orange-soft);border-top:1px solid #f3d7c8;padding:17px 24px;display:flex;align-items:center;justify-content:space-between;gap:18px}.finish-copy strong{display:block;font-size:14px;margin-bottom:4px}.finish-copy span{display:block;font-size:12px;line-height:1.55;color:#765e50}.finish-btn{border:0;background:var(--orange);color:#fff;border-radius:10px;padding:12px 17px;font-weight:850;white-space:nowrap}
 
-.composer{border:1px solid var(--line-strong);border-radius:12px;padding:10px 10px 10px 13px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;background:#fff;transition:border-color .15s,box-shadow .15s}.composer:focus-within{border-color:#9bb8f5;box-shadow:0 0 0 3px rgba(47,111,237,.08)}
-.composer textarea{border:0;outline:0;resize:none;min-height:56px;max-height:150px;padding:6px 2px;background:transparent;color:var(--text);line-height:1.55}.composer textarea::placeholder{color:#a0a7b2}.send-btn{border:0;background:var(--ink);color:#fff;border-radius:9px;height:42px;padding:0 16px;font-weight:800}
-.chat-status{min-height:20px;margin:8px 2px 0;color:var(--muted);font-size:12px}.error{color:#c63f3f!important}
-.finish-zone{margin-top:16px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px}.finish-copy strong{display:block;font-size:13px;margin-bottom:4px}.finish-copy span{display:block;color:var(--muted);font-size:12px;line-height:1.5}.finish-btn{border:0;background:var(--blue);color:#fff;border-radius:10px;padding:12px 16px;font-weight:800;white-space:nowrap}
+.study-side{position:sticky;top:90px;padding-top:3px}.side-top{border-top:2px solid var(--ink);padding:14px 0 16px}.side-kicker{font-size:11px;color:var(--muted);font-weight:800;margin-bottom:5px}.side-stage{font-size:20px;font-weight:820;line-height:1.3}.side-help{border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:14px 0;font-size:12px;line-height:1.65;color:var(--body)}.side-help b{color:var(--ink)}.skills-title{font-size:12px;font-weight:850;margin:16px 0 6px}.empty-side{font-size:12px;color:var(--muted);line-height:1.6}.skill{padding:11px 0;border-bottom:1px solid var(--line)}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:12px}.bar{height:5px;background:#e9e3da;overflow:hidden;margin-top:7px}.fill{height:100%;background:var(--blue)}.offfill{height:100%;background:var(--green)}.evidence{font-size:11px;color:var(--muted);line-height:1.5;margin-top:6px}.analysis-summary{font-size:12px;color:var(--body);line-height:1.6;margin-top:12px}
 
-.sidebar{position:sticky;top:82px}.side-body{padding:19px 20px}.side-kicker{font-size:11px;color:var(--muted);font-weight:750;margin-bottom:5px}.side-stage{font-size:18px;font-weight:820;margin-bottom:14px}.side-progress{height:5px;background:#edf0f3;border-radius:999px;overflow:hidden;margin-bottom:17px}.side-progress>div{height:100%;width:25%;background:var(--blue);transition:width .25s ease}.side-help{font-size:12px;color:var(--muted);line-height:1.6;padding:12px 0 16px;border-bottom:1px solid var(--line)}
-.skills-title{font-size:12px;font-weight:800;margin:17px 0 9px}.empty-side{font-size:12px;color:#8a929e;line-height:1.55;background:var(--surface-soft);padding:11px 12px;border-radius:9px}.skill{padding:11px 0;border-bottom:1px solid #f0f1f3}.skill:last-child{border-bottom:0}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:12px}.skill-head strong{font-variant-numeric:tabular-nums}.bar{height:6px;border-radius:999px;background:#edf0f3;overflow:hidden;margin-top:7px}.fill{height:100%;background:var(--blue)}.offfill{height:100%;background:var(--green)}.evidence{font-size:11px;color:var(--muted);line-height:1.5;margin-top:7px}.analysis-summary{font-size:12px;color:var(--muted);line-height:1.6;margin-top:11px}
+.section{margin-top:34px;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}.section.off-mode{border-top:4px solid var(--orange)}.section.result-mode{border-top:4px solid var(--green)}
+.section-head{padding:25px 28px 19px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:20px;align-items:flex-start}.section-eyebrow{font-size:11px;font-weight:850;color:var(--orange);margin-bottom:7px}.result-mode .section-eyebrow{color:var(--green)}.section-head h2{margin:0;font-size:26px;letter-spacing:-.8px}.section-head p{margin:7px 0 0;font-size:13px;line-height:1.6;color:var(--body);max-width:680px}.section-body{padding:8px 28px 26px}
+.off-notice{padding:14px 0;border-bottom:1px solid var(--line);font-size:12px;line-height:1.6;color:var(--body)}.off-notice b{color:var(--ink);margin-right:5px}.question{padding:25px 0;border-bottom:1px solid var(--line)}.question:last-child{border-bottom:0}.q-top{display:flex;align-items:center;gap:10px;margin-bottom:9px}.q-no{font-size:12px;font-weight:900;color:var(--orange)}.q-skill{font-size:12px;color:var(--muted);font-weight:750}.q-text{font-size:16px;line-height:1.7;margin:0 0 10px}.why{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px}.why b{color:var(--body)}.answer-box{width:100%;min-height:115px;border:1px solid var(--line-strong);border-radius:9px;padding:13px;resize:vertical;outline:none;line-height:1.6;background:#fff}.answer-box:focus{border-color:#e7a388}.submit-row{display:flex;justify-content:space-between;align-items:center;gap:14px;padding-top:20px}.submit-status{font-size:12px;color:var(--muted)}.primary-btn{border:0;background:var(--orange);color:#fff;border-radius:10px;padding:12px 18px;font-weight:850}
 
-.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius)}.section-head{padding:22px 24px 18px;border-bottom:1px solid var(--line);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.section-head h2{margin:0;font-size:20px;letter-spacing:-.5px}.section-head p{margin:6px 0 0;font-size:13px;color:var(--muted);line-height:1.6}.section-body{padding:22px 24px 24px}
-.off-notice{display:flex;gap:10px;align-items:flex-start;background:#f5f8ff;border:1px solid #dce7ff;padding:12px 14px;border-radius:10px;margin-bottom:18px;font-size:12px;color:#50607a;line-height:1.55}.off-notice b{color:#244b9c}
-.question{padding:20px 0;border-bottom:1px solid var(--line)}.question:first-child{padding-top:2px}.question:last-child{border-bottom:0}.q-top{display:flex;align-items:center;gap:9px;margin-bottom:9px}.q-no{width:24px;height:24px;border-radius:7px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:850}.q-skill{font-size:12px;color:var(--muted);font-weight:750}.q-text{font-size:15px;line-height:1.65;margin:0 0 11px}.why{font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px}.why b{color:#5a6370}.answer-box{width:100%;min-height:110px;border:1px solid var(--line-strong);border-radius:10px;padding:12px 13px;resize:vertical;outline:none;line-height:1.6;background:#fff}.answer-box:focus{border-color:#9bb8f5;box-shadow:0 0 0 3px rgba(47,111,237,.07)}
-.submit-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:20px}.submit-status{font-size:12px;color:var(--muted);line-height:1.5}.primary-btn{border:0;background:var(--blue);color:#fff;border-radius:10px;padding:12px 17px;font-weight:800}
+.result-guide{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:20px 0;border-bottom:1px solid var(--line)}.guide-item{border-top:2px solid var(--blue);padding-top:10px;font-size:12px;line-height:1.6;color:var(--body)}.guide-item.green{border-top-color:var(--green)}.guide-item strong{display:block;font-size:13px;color:var(--ink);margin-bottom:4px}.result-card{padding:24px 0;border-bottom:1px solid var(--line)}.result-card:last-child{border-bottom:0}.result-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:15px}.result-skill{font-size:17px;font-weight:830}.level{font-size:12px;font-weight:850;padding:6px 9px;border-radius:7px}.level.good{background:var(--green-soft);color:#176a4e}.level.mid{background:var(--amber-soft);color:#8e5c16}.level.retry{background:var(--orange-soft);color:#ad4a29}.compare{display:grid;grid-template-columns:128px minmax(0,1fr) 36px;gap:12px;align-items:center;margin:11px 0;font-size:12px;color:var(--body)}.compare .bar{margin:0}.metric-score{font-weight:850;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}.feedback{font-size:13px;line-height:1.67;color:var(--body);margin:14px 0 0}.overall{margin-top:20px;border-left:3px solid var(--green);padding:3px 0 3px 13px;font-size:13px;line-height:1.65;color:var(--body)}.footer-note{font-size:11px;line-height:1.55;color:var(--muted);margin-top:14px}.restart-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.restart-help{font-size:12px;color:var(--muted)}.restart-btn{border:1px solid var(--line-strong);background:#fff;color:var(--ink);border-radius:9px;padding:11px 15px;font-weight:800}
 
-.result-guide{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}.guide-item{padding:14px 15px;border-left:3px solid var(--blue);background:#f8faff;font-size:12px;color:var(--muted);line-height:1.55}.guide-item.green{border-left-color:var(--green);background:#f6fbf8}.guide-item strong{display:block;color:var(--text);font-size:13px;margin-bottom:4px}
-.result-card{padding:20px 0;border-bottom:1px solid var(--line)}.result-card:last-child{border-bottom:0}.result-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:13px}.result-skill{font-size:15px;font-weight:820}.level{font-size:12px;font-weight:800;padding:6px 9px;border-radius:7px}.level.good{background:var(--green-soft);color:#087a54}.level.mid{background:var(--amber-soft);color:#8b540e}.level.retry{background:var(--blue-soft);color:#315ea8}
-.compare{display:grid;grid-template-columns:130px minmax(0,1fr) 42px;gap:11px;align-items:center;margin:10px 0;font-size:12px}.compare .bar{margin:0}.metric-score{font-weight:820;font-variant-numeric:tabular-nums;text-align:right}.feedback{font-size:13px;color:#56606e;line-height:1.65;margin:13px 0 0}.overall{margin-top:18px;padding:15px 16px;background:var(--surface-soft);border-radius:10px;font-size:13px;line-height:1.65;color:#404955}.footer-note{font-size:11px;color:#8a929e;line-height:1.55;margin-top:13px}.restart-row{display:flex;justify-content:flex-end;margin-top:18px}.restart-btn{border:1px solid var(--line-strong);background:#fff;color:var(--ink);border-radius:10px;padding:11px 15px;font-weight:780}.restart-help{margin-right:auto;align-self:center;font-size:12px;color:var(--muted)}
-
-@media(max-width:900px){
-  .topbar{padding:0 18px}.brand-sub{display:none}main{padding:30px 16px 60px}.intro h1{font-size:29px}.journey{grid-template-columns:1fr 1fr}.journey-step:nth-child(3){border-left:0;border-top:1px solid var(--line)}.journey-step:nth-child(4){border-top:1px solid var(--line)}.workspace{grid-template-columns:1fr}.sidebar{position:static}.result-guide{grid-template-columns:1fr}
-}
-@media(max-width:600px){
-  .topbar{height:58px}.journey{grid-template-columns:1fr}.journey-step+.journey-step{border-left:0;border-top:1px solid var(--line)}.intro{padding-bottom:20px}.intro h1{font-size:25px}.panel-head,.section-head{padding:18px}.chat-wrap,.section-body{padding:16px}.chat{height:390px}.msg{max-width:88%}.finish-zone,.submit-row,.restart-row{align-items:stretch;flex-direction:column}.finish-btn,.primary-btn,.restart-btn{width:100%}.restart-help{margin-right:0}.compare{grid-template-columns:108px minmax(0,1fr) 34px;gap:8px}.result-head{align-items:flex-start}
-}
+@media(max-width:900px){main{padding:38px 18px 64px}.hero{grid-template-columns:1fr;gap:20px}.hero-note{max-width:500px}.workspace{grid-template-columns:1fr}.study-side{position:static}.process{grid-template-columns:repeat(2,1fr);gap:18px 0}.process:before{display:none}.process-item{border-top:1px solid var(--line);padding-top:11px}.result-guide{grid-template-columns:1fr}.hero h1{font-size:35px}}
+@media(max-width:600px){.topbar{height:58px;padding:0 16px}main{padding:30px 14px 54px}.hero h1{font-size:29px}.process{grid-template-columns:1fr;gap:12px}.process-item{display:grid;grid-template-columns:26px 1fr;column-gap:8px}.process-dot{grid-row:1/3;margin:0}.process-item strong,.process-item span{grid-column:2}.paper-head,.section-head{padding:18px}.chat-area{padding:16px 16px 0}.composer-wrap{padding:0 16px 16px}.finish-zone{padding:15px 16px;flex-direction:column;align-items:stretch}.finish-btn,.primary-btn,.restart-btn{width:100%}.section-body{padding:6px 18px 20px}.section-head h2{font-size:22px}.msg{max-width:88%}.chat{height:380px}.submit-row,.restart-row{flex-direction:column;align-items:stretch}.compare{grid-template-columns:108px minmax(0,1fr) 32px;gap:8px}}
 </style>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand-wrap"><div class="brand">AI OFF</div><div class="brand-sub">AI 학습 후 독립 수행 확인</div></div>
+  <div class="brand">AI <span>OFF</span></div>
   <div id="modeBadge" class="mode"><span class="mode-dot"></span><span>연결 확인 중</span></div>
 </header>
 
 <main>
-  <section class="intro">
-    <div class="eyebrow">오늘의 학습</div>
-    <h1>AI와 공부한 뒤, 혼자 풀어봅니다.</h1>
-    <p>AI와 대화한 내용을 바탕으로 내가 AI에 맡겼던 사고를 찾아보고, 대화를 마치면 그 부분을 직접 해보는 문제 3개가 이어집니다.</p>
+  <section class="hero">
+    <div>
+      <div class="hero-kicker">AI와 공부한 다음 단계</div>
+      <h1>AI가 해준 것과<br>내가 할 수 있는 것을 나눠봅니다.</h1>
+      <p>먼저 AI와 자유롭게 공부하세요. 대화를 마치면 이번 학습에서 AI에 맡긴 사고를 찾아, 그 부분을 내가 직접 해보는 문제 3개로 이어집니다.</p>
+    </div>
+    <div class="hero-note"><strong>연습문제는 어떻게 나오나요?</strong><span>AI와 대화가 끝났을 때 <b>‘대화 마치고 문제 만들기’</b>를 누르면 됩니다. 따로 문제를 고를 필요 없이 방금 대화를 기준으로 3개가 만들어집니다.</span></div>
   </section>
 
-  <section class="journey" aria-label="AI OFF 이용 순서">
-    <div class="journey-step"><span class="step-no">01</span><strong>AI와 공부하기</strong><span>질문하고 설명을 들으며 학습합니다.</span></div>
-    <div class="journey-step"><span class="step-no">02</span><strong>대화 마치기</strong><span>‘대화 마치고 문제 만들기’를 누릅니다.</span></div>
-    <div class="journey-step"><span class="step-no">03</span><strong>AI 없이 풀기</strong><span>방금 학습과 연결된 문제 3개를 풉니다.</span></div>
-    <div class="journey-step"><span class="step-no">04</span><strong>결과 확인하기</strong><span>AI에 맡긴 정도와 혼자 수행한 결과를 봅니다.</span></div>
+  <section class="process" aria-label="이용 순서">
+    <div class="process-item active" id="process1"><div class="process-dot">1</div><strong>AI와 공부</strong><span>질문하고 설명을 듣습니다.</span></div>
+    <div class="process-item" id="process2"><div class="process-dot">2</div><strong>대화 분석</strong><span>AI에 맡긴 사고를 찾습니다.</span></div>
+    <div class="process-item off" id="process3"><div class="process-dot">3</div><strong>직접 풀기</strong><span>AI 없이 문제 3개를 풉니다.</span></div>
+    <div class="process-item" id="process4"><div class="process-dot">4</div><strong>결과 보기</strong><span>함께한 부분과 혼자 한 부분을 봅니다.</span></div>
   </section>
 
   <div class="workspace">
-    <section class="panel">
-      <div class="panel-head">
-        <div><h2 class="panel-title">학습 대화</h2><p class="panel-desc">공부할 내용을 자유롭게 물어보세요. 충분히 대화한 뒤 문제 만들기로 넘어갑니다.</p></div>
-        <span class="stage-chip">AI ON</span>
+    <section class="study-paper">
+      <div class="paper-head">
+        <div><h2>학습 대화</h2><p>공부할 내용을 자유롭게 물어보세요. 충분히 공부한 뒤 아래 버튼으로 다음 단계로 넘어갑니다.</p></div>
+        <div class="mode-label">AI ON</div>
       </div>
-      <div class="chat-wrap">
-        <div id="chat" class="chat">
-          <div class="system-note"><strong>문제는 언제 나오나요?</strong><br>AI와 공부를 마친 뒤 아래의 <b>‘대화 마치고 문제 만들기’</b>를 누르면 이번 대화를 분석해 AI OFF 문제 3개를 만듭니다.</div>
-        </div>
+      <div class="chat-area">
+        <div class="guide-strip"><strong>지금은 AI와 함께 공부하는 시간이에요.</strong> 대화를 마치면 AI 채팅은 잠시 멈추고, 내가 직접 풀어보는 단계로 바뀝니다.</div>
+        <div id="chat" class="chat"></div>
+      </div>
+      <div class="composer-wrap">
         <div class="composer">
-          <textarea id="input" placeholder="공부할 내용을 입력하세요. 예: 삼각형의 넓이를 쉽게 설명해줘"></textarea>
+          <textarea id="input" placeholder="예: 목성 안에서는 수소가 어떻게 변해?"></textarea>
           <button id="send" class="send-btn">보내기</button>
         </div>
         <div id="chatStatus" class="chat-status"></div>
-        <div class="finish-zone">
-          <div class="finish-copy"><strong>이제 혼자 해볼 준비가 됐나요?</strong><span>대화를 마치면 AI에 맡긴 사고를 찾고, 그 부분을 직접 풀어보는 문제 3개를 만듭니다.</span></div>
-          <button id="finish" class="finish-btn">대화 마치고 문제 만들기 →</button>
-        </div>
+      </div>
+      <div class="finish-zone">
+        <div class="finish-copy"><strong>공부가 끝났다면, 이제 직접 해볼 차례예요.</strong><span>버튼을 누르면 대화를 분석한 뒤 AI OFF 문제 3개가 바로 만들어집니다.</span></div>
+        <button id="finish" class="finish-btn">대화 마치고 문제 3개 만들기 →</button>
       </div>
     </section>
 
-    <aside class="panel sidebar">
-      <div class="panel-head"><div><h2 class="panel-title">이번 학습</h2><p class="panel-desc">현재 진행 단계와 대화 분석 결과를 확인합니다.</p></div></div>
-      <div class="side-body">
-        <div class="side-kicker" id="stageStep">1 / 4</div>
-        <div class="side-stage" id="stageText">AI와 학습 중</div>
-        <div class="side-progress"><div id="stageProgress"></div></div>
-        <div class="side-help"><b>AI에 맡긴 정도</b>는 이번 대화에서 해당 사고를 AI가 대신 수행한 정도입니다. 0에 가까우면 직접 한 편이고, 100에 가까우면 AI에 많이 맡긴 편입니다.</div>
-        <div class="skills-title">대화 분석</div>
-        <div id="skills"><div class="empty-side">대화를 마치고 문제를 만들면 여기에서 사고 기능별 결과를 볼 수 있습니다.</div></div>
-        <div id="analysisSummary" class="analysis-summary"></div>
-      </div>
+    <aside class="study-side">
+      <div class="side-top"><div class="side-kicker" id="stageStep">1 / 4</div><div class="side-stage" id="stageText">AI와 학습 중</div></div>
+      <div class="side-help"><b>AI에 맡긴 정도</b>는 이번 대화에서 해당 사고를 AI가 대신 수행한 정도예요. <b>0</b>에 가까우면 내가 직접 한 편이고, <b>100</b>에 가까우면 AI에 많이 맡긴 편입니다.</div>
+      <div class="skills-title">이번 대화에서 확인한 사고 기능</div>
+      <div id="skills"><div class="empty-side">대화를 마치면 여기에 자료 탐색, 주장 구성, 근거 판단 같은 사고 기능별 결과가 표시됩니다.</div></div>
+      <div id="analysisSummary" class="analysis-summary"></div>
     </aside>
   </div>
 
-  <section id="offSection" class="section hidden">
+  <section id="offSection" class="section off-mode hidden">
     <div class="section-head">
-      <div><h2>이제 AI 없이 직접 해볼 차례예요.</h2><p>방금 학습에서 AI에 맡긴 사고 기능을 직접 수행할 수 있는지 문제 3개로 확인합니다.</p></div>
-      <span class="stage-chip">AI OFF</span>
+      <div><div class="section-eyebrow">AI OFF</div><h2>이제 내가 직접 해볼 문제예요.</h2><p>방금 대화에서 AI에 맡겼던 사고를 내가 직접 수행할 수 있는지 확인합니다. 세 문제를 모두 작성하면 결과를 볼 수 있어요.</p></div>
     </div>
     <div class="section-body">
-      <div class="off-notice"><b>AI 채팅은 잠시 쉬어요.</b><span>아래 세 문제는 서비스 안의 AI 도움 없이 직접 작성해 주세요. 세 문제를 모두 작성하면 결과를 확인할 수 있습니다.</span></div>
+      <div class="off-notice"><b>이 단계에서는 AI 채팅을 사용하지 않아요.</b> 정답을 맞히는 것만보다, 방금 공부한 내용을 내 방식으로 생각하고 설명하는 것이 중요합니다.</div>
       <div id="questions"></div>
-      <div class="submit-row">
-        <div id="offStatus" class="submit-status"></div>
-        <button id="submitOff" class="primary-btn">답변 제출하고 결과 보기 →</button>
-      </div>
+      <div class="submit-row"><div id="offStatus" class="submit-status"></div><button id="submitOff" class="primary-btn">답변 제출하고 결과 보기 →</button></div>
     </div>
   </section>
 
-  <section id="resultSection" class="section hidden">
+  <section id="resultSection" class="section result-mode hidden">
     <div class="section-head">
-      <div><h2>이번 학습 결과</h2><p>AI와 함께 공부한 과정과, AI 없이 직접 해본 결과를 나란히 봅니다.</p></div>
-      <span class="stage-chip">결과</span>
+      <div><div class="section-eyebrow">이번 학습 결과</div><h2>AI와 한 부분, 내가 직접 한 부분을 같이 봐요.</h2><p>두 숫자는 서로 다른 뜻이라서 높고 낮음만 단순 비교하면 안 됩니다. 아래 설명을 먼저 보고 결과를 확인하세요.</p></div>
     </div>
     <div class="section-body">
       <div class="result-guide">
-        <div class="guide-item"><strong>AI에 맡긴 정도</strong>이번 대화에서 해당 사고를 AI가 대신 수행한 정도입니다. <b>0에 가까울수록 직접 했고, 100에 가까울수록 AI에 많이 맡겼습니다.</b></div>
-        <div class="guide-item green"><strong>혼자 수행한 결과</strong>AI OFF 문제에서 직접 수행한 결과입니다. <b>100에 가까울수록 이번 문제의 평가기준을 충실하게 수행했습니다.</b></div>
+        <div class="guide-item"><strong>AI에 맡긴 정도</strong>AI와 대화할 때 해당 사고를 AI가 대신 수행한 정도입니다. <b>0에 가까울수록 내가 직접 했고, 100에 가까울수록 AI에 많이 맡겼어요.</b></div>
+        <div class="guide-item green"><strong>혼자 수행한 결과</strong>AI OFF 문제에서 내가 직접 수행한 결과입니다. <b>100에 가까울수록 이번 문제의 평가기준을 충실하게 수행했어요.</b></div>
       </div>
       <div id="results"></div>
       <div id="overall" class="overall"></div>
-      <div class="footer-note">이 결과는 이번 학습 세션에서의 수행만 보여줍니다. 학생의 장기적인 능력이나 성향을 판단하는 점수가 아닙니다.</div>
-      <div class="restart-row"><span class="restart-help">다른 주제로 공부하려면 새 학습을 시작하세요.</span><button id="newSession" class="restart-btn">새 학습 시작</button></div>
+      <div class="footer-note">이 결과는 이번 학습에서의 수행만 보여줍니다. 학생의 장기적인 능력이나 성향을 판단하는 점수가 아닙니다.</div>
+      <div class="restart-row"><span class="restart-help">다른 주제로 다시 공부하려면 새 학습을 시작하세요.</span><button id="newSession" class="restart-btn">새 학습 시작</button></div>
     </div>
   </section>
 </main>
@@ -175,86 +155,40 @@ main{max-width:1180px;margin:0 auto;padding:42px 22px 72px}
 <script>
 let sessionId=null,questions=[],delegationMap={},aiOffStarted=false,requestInFlight=false;
 const chat=document.getElementById('chat'),input=document.getElementById('input'),send=document.getElementById('send'),finish=document.getElementById('finish'),badge=document.getElementById('modeBadge');
-const stageStep=document.getElementById('stageStep'),stageText=document.getElementById('stageText'),stageProgress=document.getElementById('stageProgress');
+const stageStep=document.getElementById('stageStep'),stageText=document.getElementById('stageText');
+const processItems=[1,2,3,4].map(i=>document.getElementById(`process${i}`));
 
 function esc(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
-function setStage(step,text){stageStep.textContent=`${step} / 4`;stageText.textContent=text;stageProgress.style.width=`${step*25}%`;}
-function friendlyLevel(level){
-  if(level==='확인됨')return {text:'잘했어요!',cls:'good'};
-  if(level==='부분 확인')return {text:'조금만 더 연습해봐요',cls:'mid'};
-  return {text:'한 번 더 공부해볼까요?',cls:'retry'};
-}
-function renderAssistant(el,content){
-  if(window.marked&&window.DOMPurify){
-    const html=marked.parse(content,{breaks:true,gfm:true});
-    el.innerHTML=DOMPurify.sanitize(html);
-    if(window.renderMathInElement){renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});}
-  }else{el.textContent=content;}
-}
-function addMsg(role,content){
-  const row=document.createElement('div');row.className='msg-row '+(role==='user'?'user-row':'');
-  const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');
-  if(role==='assistant'){
-    const speaker=document.createElement('div');speaker.className='speaker';speaker.textContent='AI';row.appendChild(speaker);renderAssistant(el,content);
-  }else el.textContent=content;
-  row.appendChild(el);chat.appendChild(row);chat.scrollTop=chat.scrollHeight;return {row,el};
-}
+function setStage(step,text){stageStep.textContent=`${step} / 4`;stageText.textContent=text;processItems.forEach((el,i)=>{el.classList.toggle('done',i<step-1);el.classList.toggle('active',i===step-1);});}
+function friendlyLevel(level){if(level==='확인됨')return {text:'잘했어요!',cls:'good'};if(level==='부분 확인')return {text:'조금만 더 연습해봐요',cls:'mid'};return {text:'한 번 더 공부해볼까요?',cls:'retry'};}
+function renderAssistant(el,content){if(window.marked&&window.DOMPurify){const html=marked.parse(content,{breaks:true,gfm:true});el.innerHTML=DOMPurify.sanitize(html);if(window.renderMathInElement){renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});}}else{el.textContent=content;}}
+function addMsg(role,content){const row=document.createElement('div');row.className='msg-row '+(role==='user'?'user-row':'');const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');if(role==='assistant'){const speaker=document.createElement('div');speaker.className='speaker';speaker.textContent='AI';row.appendChild(speaker);renderAssistant(el,content);}else el.textContent=content;row.appendChild(el);chat.appendChild(row);chat.scrollTop=chat.scrollHeight;return {row,el};}
 function setError(el,msg){el.textContent=msg;el.classList.add('error')}
 function clearError(el){el.textContent='';el.classList.remove('error')}
 async function api(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.detail||'요청 처리 중 오류가 발생했습니다.');return d}
 
-fetch('/health').then(r=>r.json()).then(d=>{
-  const text=badge.querySelector('span:last-child');
-  if(d.gemini_configured){text.textContent='AI ON';badge.title=d.model||'';}else{text.textContent='연결 확인 필요';badge.querySelector('.mode-dot').style.background='#c63f3f';}
-}).catch(()=>{badge.querySelector('span:last-child').textContent='서버 연결 확인 필요';badge.querySelector('.mode-dot').style.background='#c63f3f';});
+fetch('/health').then(r=>r.json()).then(d=>{const text=badge.querySelector('span:last-child');if(d.gemini_configured){text.textContent='AI ON';badge.title=d.model||'';}else{text.textContent='연결 확인 필요';badge.querySelector('.mode-dot').style.background='#c94343';}}).catch(()=>{badge.querySelector('span:last-child').textContent='서버 연결 확인 필요';badge.querySelector('.mode-dot').style.background='#c94343';});
 
 send.onclick=async()=>{
-  if(aiOffStarted||requestInFlight)return;
-  const text=input.value.trim();if(!text)return;
-  requestInFlight=true;
-  const st=document.getElementById('chatStatus');clearError(st);addMsg('user',text);input.value='';send.disabled=true;finish.disabled=true;st.textContent='답변을 준비하고 있어요...';
+  if(aiOffStarted||requestInFlight)return;const text=input.value.trim();if(!text)return;
+  requestInFlight=true;const st=document.getElementById('chatStatus');clearError(st);addMsg('user',text);input.value='';send.disabled=true;finish.disabled=true;st.textContent='답변을 준비하고 있어요...';
   const ai=addMsg('assistant','');ai.el.classList.add('streaming');
-  try{
-    const r=await fetch('/api/chat-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text})});
-    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'AI 응답 오류');}
-    sessionId=r.headers.get('X-Session-Id')||sessionId;
-    const reader=r.body.getReader(),decoder=new TextDecoder();let reply='',gotFirst=false;
-    while(true){const {value,done}=await reader.read();if(done)break;if(value){reply+=decoder.decode(value,{stream:true});if(!gotFirst&&reply){gotFirst=true;st.textContent='답변 작성 중...';}renderAssistant(ai.el,reply);chat.scrollTop=chat.scrollHeight;}}
-    reply+=decoder.decode();renderAssistant(ai.el,reply);
-    if(reply.startsWith('Gemini 응답 오류:')||reply.startsWith('Gemini 오류 후 Groq'))throw new Error(reply);
-    st.textContent='';
-  }catch(e){ai.row.remove();setError(st,e.message);}finally{ai.el.classList.remove('streaming');requestInFlight=false;send.disabled=false;finish.disabled=false;}
+  try{const r=await fetch('/api/chat-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text})});if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'AI 응답 오류');}sessionId=r.headers.get('X-Session-Id')||sessionId;const reader=r.body.getReader(),decoder=new TextDecoder();let reply='',gotFirst=false;while(true){const {value,done}=await reader.read();if(done)break;if(value){reply+=decoder.decode(value,{stream:true});if(!gotFirst&&reply){gotFirst=true;st.textContent='답변 작성 중...';}renderAssistant(ai.el,reply);chat.scrollTop=chat.scrollHeight;}}reply+=decoder.decode();renderAssistant(ai.el,reply);if(reply.startsWith('Gemini 응답 오류:')||reply.startsWith('Gemini 오류 후 Groq'))throw new Error(reply);st.textContent='';}
+  catch(e){ai.row.remove();setError(st,e.message);}finally{ai.el.classList.remove('streaming');requestInFlight=false;send.disabled=false;finish.disabled=false;}
 };
-
 input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!requestInFlight)send.click();}});
 
 finish.onclick=async()=>{
   if(requestInFlight)return;if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}
   const st=document.getElementById('chatStatus');clearError(st);finish.disabled=true;send.disabled=true;input.disabled=true;st.textContent='대화를 살펴보고 문제를 만들고 있어요...';setStage(2,'대화 분석 중');
-  try{
-    const a=await api('/api/analyze',{session_id:sessionId});
-    delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));
-    document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${esc(x.skill)}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+esc(v)).join('<br>')}</div></div>`).join('');
-    document.getElementById('analysisSummary').textContent=a.summary;
-    const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;
-    document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="q-top"><span class="q-no">${i+1}</span><span class="q-skill">${esc(q.skill)}</span></div><p class="q-text">${esc(q.question)}</p><div class="why"><b>이 문제를 내는 이유</b> · ${esc(q.why_this_question)}</div><textarea class="answer-box" id="answer_${i}" placeholder="AI 도움 없이 직접 작성해 보세요."></textarea></div>`).join('');
-    aiOffStarted=true;badge.querySelector('span:last-child').textContent='AI OFF';st.textContent='';setStage(3,'AI OFF 문제 풀기');document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'});
-  }catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false;setStage(1,'AI와 학습 중');}
+  try{const a=await api('/api/analyze',{session_id:sessionId});delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${esc(x.skill)}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+esc(v)).join('<br>')}</div></div>`).join('');document.getElementById('analysisSummary').textContent=a.summary;const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="q-top"><span class="q-no">문제 ${i+1}</span><span class="q-skill">${esc(q.skill)}</span></div><p class="q-text">${esc(q.question)}</p><div class="why"><b>이 문제를 내는 이유</b> · ${esc(q.why_this_question)}</div><textarea class="answer-box" id="answer_${i}" placeholder="AI 도움 없이 직접 작성해 보세요."></textarea></div>`).join('');aiOffStarted=true;badge.querySelector('span:last-child').textContent='AI OFF';badge.querySelector('.mode-dot').style.background='var(--orange)';st.textContent='';setStage(3,'AI 없이 직접 풀기');document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'});}
+  catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false;setStage(1,'AI와 학습 중');}
 };
 
 document.getElementById('submitOff').onclick=async()=>{
-  const st=document.getElementById('offStatus');clearError(st);
-  const answers=questions.map((q,i)=>({question_id:q.question_id,answer:document.getElementById(`answer_${i}`).value.trim()}));
-  if(answers.some(a=>!a.answer)){setError(st,'세 문제에 모두 답한 뒤 결과를 확인해 주세요.');return}
-  document.getElementById('submitOff').disabled=true;st.textContent='답변을 확인하고 있어요...';
-  try{
-    const d=await api('/api/off-submit',{session_id:sessionId,answers});
-    document.getElementById('results').innerHTML=d.results.map(r=>{
-      const dg=delegationMap[r.skill]??0;const lv=friendlyLevel(r.level);
-      return `<div class="result-card"><div class="result-head"><div class="result-skill">${esc(r.skill)}</div><span class="level ${lv.cls}">${lv.text}</span></div><div class="compare"><span>AI에 맡긴 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><span class="metric-score">${dg}</span></div><div class="compare"><span>혼자 수행한 결과</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><span class="metric-score">${r.score}</span></div><p class="feedback">${esc(r.feedback)}</p></div>`;
-    }).join('');
-    document.getElementById('overall').textContent=d.overall_summary;document.getElementById('resultSection').classList.remove('hidden');st.textContent='결과가 준비됐어요.';setStage(4,'결과 확인');document.getElementById('resultSection').scrollIntoView({behavior:'smooth'});
-  }catch(e){setError(st,e.message);document.getElementById('submitOff').disabled=false;}
+  const st=document.getElementById('offStatus');clearError(st);const answers=questions.map((q,i)=>({question_id:q.question_id,answer:document.getElementById(`answer_${i}`).value.trim()}));if(answers.some(a=>!a.answer)){setError(st,'세 문제에 모두 답한 뒤 결과를 확인해 주세요.');return}document.getElementById('submitOff').disabled=true;st.textContent='답변을 확인하고 있어요...';
+  try{const d=await api('/api/off-submit',{session_id:sessionId,answers});document.getElementById('results').innerHTML=d.results.map(r=>{const dg=delegationMap[r.skill]??0;const lv=friendlyLevel(r.level);return `<div class="result-card"><div class="result-head"><div class="result-skill">${esc(r.skill)}</div><span class="level ${lv.cls}">${lv.text}</span></div><div class="compare"><span>AI에 맡긴 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><span class="metric-score">${dg}</span></div><div class="compare"><span>혼자 수행한 결과</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><span class="metric-score">${r.score}</span></div><p class="feedback">${esc(r.feedback)}</p></div>`;}).join('');document.getElementById('overall').textContent=d.overall_summary;document.getElementById('resultSection').classList.remove('hidden');st.textContent='결과가 준비됐어요.';setStage(4,'결과 확인');document.getElementById('resultSection').scrollIntoView({behavior:'smooth'});}
+  catch(e){setError(st,e.message);document.getElementById('submitOff').disabled=false;}
 };
 
 document.getElementById('newSession').onclick=()=>{location.reload();};
