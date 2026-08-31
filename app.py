@@ -15,7 +15,7 @@ DB_PATH = BASE_DIR / "aioff.db"
 ENV_PATH = BASE_DIR / ".env"
 
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash-lite"
-DEFAULT_OPENAI_MODEL = "gpt-5-nano"
+DEFAULT_GROQ_MODEL = "openai/gpt-oss-20b"
 
 
 def load_env_file():
@@ -99,8 +99,8 @@ def gemini_model():
     return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip() or DEFAULT_GEMINI_MODEL
 
 
-def openai_model():
-    return os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip() or DEFAULT_OPENAI_MODEL
+def groq_model():
+    return os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL).strip() or DEFAULT_GROQ_MODEL
 
 
 def gemini_client():
@@ -114,19 +114,19 @@ def gemini_client():
         raise HTTPException(503, "google-genai 패키지가 설치되지 않았습니다.")
 
 
-def openai_client():
-    key = os.getenv("OPENAI_API_KEY", "").strip()
+def groq_client():
+    key = os.getenv("GROQ_API_KEY", "").strip()
     if not key:
         return None
     try:
-        from openai import OpenAI
-        return OpenAI(api_key=key)
+        from groq import Groq
+        return Groq(api_key=key)
     except ImportError:
         return None
 
 
-def openai_configured():
-    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+def groq_configured():
+    return bool(os.getenv("GROQ_API_KEY", "").strip())
 
 
 def messages(session_id: str, limit: int = 40):
@@ -140,7 +140,7 @@ def messages(session_id: str, limit: int = 40):
 
 def transcript(session_id: str):
     return "\n".join(
-        f"{'학생' if m['role']=='user' else 'AI'}: {m['content']}"
+        f"{'학생' if m['role'] == 'user' else 'AI'}: {m['content']}"
         for m in messages(session_id)
     )
 
@@ -152,7 +152,7 @@ def student_requests(session_id: str):
 def chat_prompt(session_id: str, user_message: str):
     prior = messages(session_id, 8)
     history = "\n".join(
-        f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}"
+        f"{'학생' if m['role'] == 'user' else '튜터'}: {m['content']}"
         for m in prior
     )
     return f"""너는 중·고등학생의 수행평가와 학습을 돕는 AI 튜터다.
@@ -176,12 +176,10 @@ def save_chat_exchange(session_id: str, user_message: str, reply: str):
 
 
 def error_code(exc):
-    code = getattr(exc, "code", None)
-    if isinstance(code, int):
-        return code
-    status = getattr(exc, "status_code", None)
-    if isinstance(status, int):
-        return status
+    for attr in ("code", "status_code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
     return None
 
 
@@ -205,45 +203,47 @@ def gemini_generate(prompt: str, config=None):
     raise last_error
 
 
-def openai_generate_text(prompt: str, max_output_tokens: int = 700):
-    client = openai_client()
+def groq_generate_text(prompt: str, max_output_tokens: int = 700):
+    client = groq_client()
     if client is None:
-        raise RuntimeError("OPENAI_API_KEY_NOT_CONFIGURED")
-    response = client.responses.create(
-        model=openai_model(),
-        input=prompt,
-        max_output_tokens=max_output_tokens,
-        reasoning={"effort": "minimal"},
-        store=False,
+        raise RuntimeError("GROQ_API_KEY_NOT_CONFIGURED")
+    response = client.chat.completions.create(
+        model=groq_model(),
+        messages=[{"role": "user", "content": prompt}],
+        max_completion_tokens=max_output_tokens,
+        reasoning_effort="low",
+        reasoning_format="hidden",
+        temperature=0.3,
     )
-    text = (getattr(response, "output_text", None) or "").strip()
+    text = (response.choices[0].message.content or "").strip()
     if not text:
-        raise ValueError("openai_empty_response")
+        raise ValueError("groq_empty_response")
     return text
 
 
-def openai_generate_structured(prompt: str, cls, max_output_tokens: int = 900):
-    client = openai_client()
+def groq_generate_structured(prompt: str, cls, max_output_tokens: int = 900):
+    client = groq_client()
     if client is None:
-        raise RuntimeError("OPENAI_API_KEY_NOT_CONFIGURED")
-    response = client.responses.create(
-        model=openai_model(),
-        input=prompt,
-        max_output_tokens=max_output_tokens,
-        reasoning={"effort": "minimal"},
-        text={
-            "format": {
-                "type": "json_schema",
+        raise RuntimeError("GROQ_API_KEY_NOT_CONFIGURED")
+    response = client.chat.completions.create(
+        model=groq_model(),
+        messages=[{"role": "user", "content": prompt}],
+        max_completion_tokens=max_output_tokens,
+        reasoning_effort="low",
+        reasoning_format="hidden",
+        temperature=0.2,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
                 "name": cls.__name__.lower(),
                 "schema": cls.model_json_schema(),
                 "strict": False,
-            }
+            },
         },
-        store=False,
     )
-    text = (getattr(response, "output_text", None) or "").strip()
+    text = (response.choices[0].message.content or "").strip()
     if not text:
-        raise ValueError("openai_empty_response")
+        raise ValueError("groq_empty_response")
     return cls.model_validate_json(text)
 
 
@@ -255,9 +255,9 @@ def generate_text_with_fallback(prompt: str, gemini_config=None, max_output_toke
             raise ValueError("gemini_empty_response")
         return text, "gemini"
     except Exception as gemini_error:
-        if not openai_configured():
+        if not groq_configured():
             raise gemini_error
-        return openai_generate_text(prompt, max_output_tokens=max_output_tokens), "openai"
+        return groq_generate_text(prompt, max_output_tokens=max_output_tokens), "groq"
 
 
 def generate_structured_with_fallback(prompt: str, cls, max_output_tokens: int = 900):
@@ -268,12 +268,14 @@ def generate_structured_with_fallback(prompt: str, cls, max_output_tokens: int =
         )
         parsed = getattr(r, "parsed", None)
         if parsed is not None:
-            return (parsed if isinstance(parsed, cls) else cls.model_validate(parsed)), "gemini"
-        return cls.model_validate_json(r.text), "gemini"
+            result = parsed if isinstance(parsed, cls) else cls.model_validate(parsed)
+        else:
+            result = cls.model_validate_json(r.text)
+        return result, "gemini"
     except Exception as gemini_error:
-        if not openai_configured():
+        if not groq_configured():
             raise gemini_error
-        return openai_generate_structured(prompt, cls, max_output_tokens=max_output_tokens), "openai"
+        return groq_generate_structured(prompt, cls, max_output_tokens=max_output_tokens), "groq"
 
 
 def level_from_score(score: int):
@@ -289,9 +291,11 @@ def parse_plain_evaluation(text: str, expected_ids: set[int]):
         data = json.loads(text)
     except json.JSONDecodeError as e:
         raise ValueError("evaluation_json_invalid") from e
+
     raw_results = data.get("results")
     if not isinstance(raw_results, list):
         raise ValueError("evaluation_results_missing")
+
     parsed = []
     seen = set()
     for item in raw_results:
@@ -306,10 +310,17 @@ def parse_plain_evaluation(text: str, expected_ids: set[int]):
             continue
         score = max(0, min(100, score))
         feedback = str(item.get("feedback") or "").strip() or "답변의 핵심 내용을 평가기준과 다시 비교해 보세요."
-        parsed.append({"question_id": question_id, "score": score, "level": level_from_score(score), "feedback": feedback})
+        parsed.append({
+            "question_id": question_id,
+            "score": score,
+            "level": level_from_score(score),
+            "feedback": feedback,
+        })
         seen.add(question_id)
+
     if seen != expected_ids:
         raise ValueError("evaluation_question_mismatch")
+
     overall_summary = str(data.get("overall_summary") or "").strip() or "각 문항별 독립 수행 결과를 확인했습니다."
     return parsed, overall_summary
 
@@ -326,8 +337,8 @@ def health():
         "service": "AI OFF",
         "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
         "model": gemini_model(),
-        "fallback_configured": openai_configured(),
-        "fallback_model": openai_model() if openai_configured() else None,
+        "fallback_configured": groq_configured(),
+        "fallback_model": groq_model() if groq_configured() else None,
     }
 
 
@@ -353,9 +364,14 @@ def chat_stream(req: ChatRequest):
     def generate():
         reply_parts = []
         emitted = False
+        gemini_error = None
+
         try:
             client = gemini_client()
-            stream = client.models.generate_content_stream(model=gemini_model(), contents=prompt)
+            stream = client.models.generate_content_stream(
+                model=gemini_model(),
+                contents=prompt,
+            )
             for chunk in stream:
                 text = getattr(chunk, "text", None) or ""
                 if text:
@@ -367,27 +383,51 @@ def chat_stream(req: ChatRequest):
                 raise ValueError("gemini_empty_response")
             save_chat_exchange(sid, req.message, reply)
             return
-        except Exception as gemini_error:
+        except Exception as e:
+            gemini_error = e
             if emitted:
                 yield "\n\n응답 전송이 중단되었습니다. 같은 질문을 다시 보내주세요."
                 return
-            if openai_configured():
-                try:
-                    reply = openai_generate_text(prompt, max_output_tokens=700)
-                    save_chat_exchange(sid, req.message, reply)
-                    yield reply
-                    return
-                except Exception as openai_error:
-                    yield f"Gemini 응답 오류: {type(gemini_error).__name__}; GPT 보조 응답 오류: {type(openai_error).__name__}"
-                    return
-            code = error_code(gemini_error)
-            suffix = f" ({code})" if code else ""
-            yield f"Gemini 응답 오류: {type(gemini_error).__name__}{suffix}"
+
+        if groq_configured():
+            try:
+                client = groq_client()
+                stream = client.chat.completions.create(
+                    model=groq_model(),
+                    messages=[{"role": "user", "content": prompt}],
+                    max_completion_tokens=700,
+                    reasoning_effort="low",
+                    reasoning_format="hidden",
+                    temperature=0.3,
+                    stream=True,
+                )
+                reply_parts = []
+                for chunk in stream:
+                    text = chunk.choices[0].delta.content or ""
+                    if text:
+                        reply_parts.append(text)
+                        yield text
+                reply = "".join(reply_parts).strip()
+                if not reply:
+                    raise ValueError("groq_empty_response")
+                save_chat_exchange(sid, req.message, reply)
+                return
+            except Exception as groq_error:
+                yield f"Gemini 오류 후 Groq 보조 응답도 실패했습니다: {type(groq_error).__name__}"
+                return
+
+        code = error_code(gemini_error)
+        suffix = f" ({code})" if code else ""
+        yield f"Gemini 응답 오류: {type(gemini_error).__name__}{suffix}"
 
     return StreamingResponse(
         generate(),
         media_type="text/plain; charset=utf-8",
-        headers={"X-Session-Id": sid, "Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "X-Session-Id": sid,
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -396,6 +436,7 @@ def analyze(req: SessionRequest):
     tx = transcript(req.session_id)
     if not tx.strip():
         raise HTTPException(400, "분석할 학습 대화가 없습니다.")
+
     prompt = f"""다음은 학생과 AI 튜터의 실제 학습 대화다.
 
 {tx}
@@ -408,13 +449,20 @@ evidence는 실제 대화에서 확인되는 짧은 근거를 최대 2개 적는
 top_skills에는 위임 정도가 0보다 큰 기능만 최대 3개를 높은 순서대로 넣는다.
 0보다 큰 기능이 없으면 top_skills는 빈 배열로 둔다.
 학생의 성향이나 장기 능력을 단정하지 않는다."""
+
     try:
-        result, _ = generate_structured_with_fallback(prompt, AnalysisResult, max_output_tokens=900)
+        result, _ = generate_structured_with_fallback(
+            prompt,
+            AnalysisResult,
+            max_output_tokens=900,
+        )
     except Exception as e:
         raise HTTPException(502, f"대화 분석 오류: {type(e).__name__}")
+
     data = result.model_dump()
     ranked = sorted(data["scores"], key=lambda x: x["delegation"], reverse=True)
     data["top_skills"] = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
+
     with connect_db() as c:
         c.execute(
             "INSERT INTO analyses(session_id,result_json) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET result_json=excluded.result_json, created_at=CURRENT_TIMESTAMP",
@@ -427,14 +475,25 @@ top_skills에는 위임 정도가 0보다 큰 기능만 최대 3개를 높은 �
 def off_test(req: SessionRequest):
     tx = transcript(req.session_id)
     requests = student_requests(req.session_id)
+
     with connect_db() as c:
-        row = c.execute("SELECT result_json FROM analyses WHERE session_id=?", (req.session_id,)).fetchone()
+        row = c.execute(
+            "SELECT result_json FROM analyses WHERE session_id=?",
+            (req.session_id,),
+        ).fetchone()
+
     analysis = json.loads(row["result_json"]) if row else analyze(req)
     ranked = sorted(analysis["scores"], key=lambda x: x["delegation"], reverse=True)
     top = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
+
     if not top:
-        raise HTTPException(400, "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.")
+        raise HTTPException(
+            400,
+            "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.",
+        )
+
     request_list = "\n".join(f"- {text}" for text in requests)
+
     prompt = f"""다음은 학생의 전체 학습 세션이다.
 
 [학생이 실제로 요청한 내용]
@@ -468,10 +527,16 @@ def off_test(req: SessionRequest):
 - 각 문제는 2~5분 안에 답할 수 있어야 한다.
 - 정답이나 모범답안을 질문에 포함하지 않는다.
 - evaluation_criteria는 채점 핵심 기준 2~4개를 적는다."""
+
     try:
-        result, _ = generate_structured_with_fallback(prompt, OffTestResult, max_output_tokens=1200)
+        result, _ = generate_structured_with_fallback(
+            prompt,
+            OffTestResult,
+            max_output_tokens=1200,
+        )
     except Exception as e:
         raise HTTPException(502, f"AI OFF 문제 생성 오류: {type(e).__name__}")
+
     out = []
     with connect_db() as c:
         c.execute("DELETE FROM off_questions WHERE session_id=?", (req.session_id,))
@@ -479,7 +544,13 @@ def off_test(req: SessionRequest):
         for q in result.questions[:3]:
             cur = c.execute(
                 "INSERT INTO off_questions(session_id,skill,question,why_this_question,criteria_json) VALUES(?,?,?,?,?)",
-                (req.session_id, q.skill, q.question, q.why_this_question, json.dumps(q.evaluation_criteria, ensure_ascii=False)),
+                (
+                    req.session_id,
+                    q.skill,
+                    q.question,
+                    q.why_this_question,
+                    json.dumps(q.evaluation_criteria, ensure_ascii=False),
+                ),
             )
             out.append({"question_id": cur.lastrowid, **q.model_dump()})
     return {"questions": out}
@@ -489,6 +560,7 @@ def off_test(req: SessionRequest):
 def off_submit(req: SubmitOffRequest):
     if not req.answers:
         raise HTTPException(400, "제출된 답변이 없습니다.")
+
     ids = [a.question_id for a in req.answers]
     marks = ",".join("?" for _ in ids)
     with connect_db() as c:
@@ -496,15 +568,24 @@ def off_submit(req: SubmitOffRequest):
             f"SELECT id,skill,question,criteria_json FROM off_questions WHERE session_id=? AND id IN ({marks})",
             [req.session_id] + ids,
         ).fetchall()
+
     qmap = {r["id"]: r for r in rows}
     answer_map = {a.question_id: a.answer for a in req.answers}
     items = []
     for a in req.answers:
         q = qmap.get(a.question_id)
         if q:
-            items.append({"question_id": a.question_id, "skill": q["skill"], "question": q["question"], "criteria": json.loads(q["criteria_json"]), "answer": a.answer})
+            items.append({
+                "question_id": a.question_id,
+                "skill": q["skill"],
+                "question": q["question"],
+                "criteria": json.loads(q["criteria_json"]),
+                "answer": a.answer,
+            })
+
     if len(items) != len(req.answers):
         raise HTTPException(400, "현재 세션의 AI OFF 문항과 제출 답변이 일치하지 않습니다.")
+
     prompt_blocks = []
     for i, item in enumerate(items, 1):
         criteria_text = "\n".join(f"- {x}" for x in item["criteria"])
@@ -515,6 +596,7 @@ question_id: {item['question_id']}
 학생 답변: {item['answer']}
 평가기준:
 {criteria_text}""")
+
     prompt = f"""다음은 학생이 AI OFF 단계에서 AI 도움 없이 직접 작성한 답변입니다.
 질문, 학생 답변, 출제 시 저장된 평가기준만 사용하여 각 답변을 평가하세요.
 
@@ -536,20 +618,41 @@ question_id: {item['question_id']}
   ],
   "overall_summary": "이번 AI OFF 수행에 대한 1~2문장 요약"
 }}"""
+
     try:
-        text, _ = generate_text_with_fallback(prompt, gemini_config={"response_mime_type": "application/json"}, max_output_tokens=900)
+        text, _ = generate_text_with_fallback(
+            prompt,
+            gemini_config={"response_mime_type": "application/json"},
+            max_output_tokens=900,
+        )
         parsed_results, overall_summary = parse_plain_evaluation(text, set(ids))
     except Exception as e:
         raise HTTPException(502, f"AI OFF 답변 평가 오류: {type(e).__name__}")
+
     results = []
     with connect_db() as c:
         c.execute("DELETE FROM off_results WHERE session_id=?", (req.session_id,))
         for x in parsed_results:
             q = qmap[x["question_id"]]
-            result_item = {"question_id": x["question_id"], "skill": q["skill"], "score": x["score"], "level": x["level"], "feedback": x["feedback"]}
+            result_item = {
+                "question_id": x["question_id"],
+                "skill": q["skill"],
+                "score": x["score"],
+                "level": x["level"],
+                "feedback": x["feedback"],
+            }
             results.append(result_item)
             c.execute(
                 "INSERT INTO off_results(question_id,session_id,skill,answer,score,level,feedback) VALUES(?,?,?,?,?,?,?)",
-                (x["question_id"], req.session_id, q["skill"], answer_map.get(x["question_id"], ""), x["score"], x["level"], x["feedback"]),
+                (
+                    x["question_id"],
+                    req.session_id,
+                    q["skill"],
+                    answer_map.get(x["question_id"], ""),
+                    x["score"],
+                    x["level"],
+                    x["feedback"],
+                ),
             )
+
     return {"results": results, "overall_summary": overall_summary}
