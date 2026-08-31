@@ -4,7 +4,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Literal
 from pathlib import Path
-import sqlite3, uuid, os, json, time
+import sqlite3
+import uuid
+import os
+import json
+import time
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "aioff.db"
@@ -119,12 +123,18 @@ def model_name():
 
 def messages(session_id: str, limit: int = 40):
     with connect_db() as c:
-        rows = c.execute("SELECT role, content FROM messages WHERE session_id=? ORDER BY id DESC LIMIT ?", (session_id, limit)).fetchall()
+        rows = c.execute(
+            "SELECT role, content FROM messages WHERE session_id=? ORDER BY id DESC LIMIT ?",
+            (session_id, limit),
+        ).fetchall()
     return [dict(r) for r in reversed(rows)]
 
 
 def transcript(session_id: str):
-    return "\n".join(f"{'학생' if m['role']=='user' else 'AI'}: {m['content']}" for m in messages(session_id))
+    return "\n".join(
+        f"{'학생' if m['role']=='user' else 'AI'}: {m['content']}"
+        for m in messages(session_id)
+    )
 
 
 def student_requests(session_id: str):
@@ -167,7 +177,10 @@ def gemini_generate(client, *, contents, config=None, attempts: int = 3):
 
 def chat_prompt(session_id: str, user_message: str):
     prior = messages(session_id, 12)
-    history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
+    history = "\n".join(
+        f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}"
+        for m in prior
+    )
     return f"""너는 중·고등학생의 수행평가와 학습을 돕는 AI 튜터다.
 학생 대신 과제를 통째로 완성하기보다 학생이 스스로 판단할 수 있도록 설명, 질문, 예시를 제공한다.
 학생이 요청한 초안·구조·근거는 필요한 범위에서 도울 수 있다.
@@ -184,8 +197,21 @@ def chat_prompt(session_id: str, user_message: str):
 def save_chat_exchange(session_id: str, user_message: str, reply: str):
     with connect_db() as c:
         c.execute("INSERT OR IGNORE INTO sessions(id) VALUES(?)", (session_id,))
-        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)", (session_id, user_message))
-        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)", (session_id, reply))
+        c.execute(
+            "INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)",
+            (session_id, user_message),
+        )
+        c.execute(
+            "INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)",
+            (session_id, reply),
+        )
+
+
+def low_thinking_config():
+    from google.genai import types
+    return types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_level="low")
+    )
 
 
 def level_from_score(score: int):
@@ -222,12 +248,14 @@ def parse_plain_evaluation(text: str, expected_ids: set[int]):
         feedback = str(item.get("feedback") or "").strip()
         if not feedback:
             feedback = "답변의 핵심 내용을 평가기준과 다시 비교해 보세요."
-        parsed.append({
-            "question_id": question_id,
-            "score": score,
-            "level": level_from_score(score),
-            "feedback": feedback,
-        })
+        parsed.append(
+            {
+                "question_id": question_id,
+                "score": score,
+                "level": level_from_score(score),
+                "feedback": feedback,
+            }
+        )
         seen.add(question_id)
 
     if seen != expected_ids:
@@ -246,7 +274,12 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "AI OFF", "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()), "model": model_name()}
+    return {
+        "status": "ok",
+        "service": "AI OFF",
+        "gemini_configured": bool(os.getenv("GEMINI_API_KEY", "").strip()),
+        "model": model_name(),
+    }
 
 
 @app.post("/api/chat")
@@ -254,12 +287,15 @@ def chat(req: ChatRequest):
     client = gemini_client()
     sid = req.session_id or str(uuid.uuid4())
     prompt = chat_prompt(sid, req.message)
+
     try:
-        from google.genai import types
-        config = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_level="low")
-        )
-        r = gemini_generate(client, contents=prompt, config=config)
+        try:
+            r = gemini_generate(client, contents=prompt, config=low_thinking_config())
+        except Exception as first_error:
+            if type(first_error).__name__ != "ClientError":
+                raise
+            r = gemini_generate(client, contents=prompt, config=None, attempts=2)
+
         reply = (r.text or "").strip()
         if not reply:
             raise ValueError("empty")
@@ -288,40 +324,50 @@ def chat_stream(req: ChatRequest):
             "ResourceExhausted",
         }
 
-        for attempt in range(3):
-            try:
-                from google.genai import types
-                config = types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(thinking_level="low")
-                )
-                stream = client.models.generate_content_stream(
-                    model=model_name(),
-                    contents=prompt,
-                    config=config,
-                )
-                for chunk in stream:
-                    text = (getattr(chunk, "text", None) or "")
-                    if text:
-                        emitted = True
-                        reply_parts.append(text)
-                        yield text
+        modes = ["low", "default"]
+        for mode in modes:
+            attempts = 3 if mode == "low" else 2
+            for attempt in range(attempts):
+                try:
+                    config = low_thinking_config() if mode == "low" else None
+                    kwargs = {"model": model_name(), "contents": prompt}
+                    if config is not None:
+                        kwargs["config"] = config
 
-                reply = "".join(reply_parts).strip()
-                if not reply:
-                    raise ValueError("empty")
-                save_chat_exchange(sid, req.message, reply)
-                return
-            except Exception as e:
-                last_error = e
-                if emitted:
-                    yield "\n\n응답 전송이 중단되었습니다. 같은 질문을 다시 보내주세요."
+                    stream = client.models.generate_content_stream(**kwargs)
+                    for chunk in stream:
+                        text = getattr(chunk, "text", None) or ""
+                        if text:
+                            emitted = True
+                            reply_parts.append(text)
+                            yield text
+
+                    reply = "".join(reply_parts).strip()
+                    if not reply:
+                        raise ValueError("empty")
+                    save_chat_exchange(sid, req.message, reply)
                     return
-                status = getattr(e, "status_code", None) or getattr(e, "code", None)
-                transient = type(e).__name__ in transient_names or status in {429, 500, 502, 503, 504}
-                if not transient or attempt == 2:
-                    yield f"Gemini 응답 오류: {type(e).__name__}"
-                    return
-                time.sleep(0.5 * (2 ** attempt))
+
+                except Exception as e:
+                    last_error = e
+                    if emitted:
+                        yield "\n\n응답 전송이 중단되었습니다. 같은 질문을 다시 보내주세요."
+                        return
+
+                    if type(e).__name__ == "ClientError" and mode == "low":
+                        break
+
+                    status = getattr(e, "status_code", None) or getattr(e, "code", None)
+                    transient = (
+                        type(e).__name__ in transient_names
+                        or status in {429, 500, 502, 503, 504}
+                    )
+                    if not transient or attempt == attempts - 1:
+                        if mode == "default":
+                            yield f"Gemini 응답 오류: {type(e).__name__}"
+                            return
+                        break
+                    time.sleep(0.5 * (2 ** attempt))
 
         if last_error:
             yield f"Gemini 응답 오류: {type(last_error).__name__}"
@@ -343,6 +389,7 @@ def analyze(req: SessionRequest):
     tx = transcript(req.session_id)
     if not tx.strip():
         raise HTTPException(400, "분석할 학습 대화가 없습니다.")
+
     prompt = f"""다음은 학생과 AI 튜터의 실제 학습 대화다.
 
 {tx}
@@ -355,18 +402,31 @@ evidence는 실제 대화에서 확인되는 짧은 근거를 최대 2개 적는
 top_skills에는 위임 정도가 0보다 큰 기능만 최대 3개를 높은 순서대로 넣는다.
 0보다 큰 기능이 없으면 top_skills는 빈 배열로 둔다.
 학생의 성향이나 장기 능력을 단정하지 않는다."""
+
     try:
-        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":AnalysisResult})
+        r = gemini_generate(
+            client,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": AnalysisResult,
+            },
+        )
         result = structured(r, AnalysisResult)
     except Exception as e:
         raise HTTPException(502, f"Gemini 분석 오류: {type(e).__name__}")
 
     data = result.model_dump()
     ranked = sorted(data["scores"], key=lambda x: x["delegation"], reverse=True)
-    data["top_skills"] = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
+    data["top_skills"] = [
+        x["skill"] for x in ranked if x["delegation"] > 0
+    ][:3]
 
     with connect_db() as c:
-        c.execute("INSERT INTO analyses(session_id,result_json) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET result_json=excluded.result_json, created_at=CURRENT_TIMESTAMP", (req.session_id, json.dumps(data, ensure_ascii=False)))
+        c.execute(
+            "INSERT INTO analyses(session_id,result_json) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET result_json=excluded.result_json, created_at=CURRENT_TIMESTAMP",
+            (req.session_id, json.dumps(data, ensure_ascii=False)),
+        )
     return data
 
 
@@ -377,14 +437,20 @@ def off_test(req: SessionRequest):
     requests = student_requests(req.session_id)
 
     with connect_db() as c:
-        row = c.execute("SELECT result_json FROM analyses WHERE session_id=?", (req.session_id,)).fetchone()
+        row = c.execute(
+            "SELECT result_json FROM analyses WHERE session_id=?",
+            (req.session_id,),
+        ).fetchone()
 
     analysis = json.loads(row["result_json"]) if row else analyze(req)
     ranked = sorted(analysis["scores"], key=lambda x: x["delegation"], reverse=True)
     top = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
 
     if not top:
-        raise HTTPException(400, "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.")
+        raise HTTPException(
+            400,
+            "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.",
+        )
 
     request_list = "\n".join(f"- {text}" for text in requests)
 
@@ -422,8 +488,16 @@ def off_test(req: SessionRequest):
 - 정답이나 모범답안을 질문에 포함하지 않는다.
 - evaluation_criteria는 채점 핵심 기준 2~4개를 적는다.
 """
+
     try:
-        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":OffTestResult})
+        r = gemini_generate(
+            client,
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": OffTestResult,
+            },
+        )
         result = structured(r, OffTestResult)
     except Exception as e:
         raise HTTPException(502, f"AI OFF 문제 생성 오류: {type(e).__name__}")
@@ -433,8 +507,17 @@ def off_test(req: SessionRequest):
         c.execute("DELETE FROM off_questions WHERE session_id=?", (req.session_id,))
         c.execute("DELETE FROM off_results WHERE session_id=?", (req.session_id,))
         for q in result.questions[:3]:
-            cur = c.execute("INSERT INTO off_questions(session_id,skill,question,why_this_question,criteria_json) VALUES(?,?,?,?,?)", (req.session_id, q.skill, q.question, q.why_this_question, json.dumps(q.evaluation_criteria, ensure_ascii=False)))
-            out.append({"question_id":cur.lastrowid, **q.model_dump()})
+            cur = c.execute(
+                "INSERT INTO off_questions(session_id,skill,question,why_this_question,criteria_json) VALUES(?,?,?,?,?)",
+                (
+                    req.session_id,
+                    q.skill,
+                    q.question,
+                    q.why_this_question,
+                    json.dumps(q.evaluation_criteria, ensure_ascii=False),
+                ),
+            )
+            out.append({"question_id": cur.lastrowid, **q.model_dump()})
     return {"questions": out}
 
 
@@ -459,13 +542,15 @@ def off_submit(req: SubmitOffRequest):
         q = qmap.get(a.question_id)
         if not q:
             continue
-        items.append({
-            "question_id": a.question_id,
-            "skill": q["skill"],
-            "question": q["question"],
-            "criteria": json.loads(q["criteria_json"]),
-            "answer": a.answer,
-        })
+        items.append(
+            {
+                "question_id": a.question_id,
+                "skill": q["skill"],
+                "question": q["question"],
+                "criteria": json.loads(q["criteria_json"]),
+                "answer": a.answer,
+            }
+        )
 
     if len(items) != len(req.answers):
         raise HTTPException(400, "현재 세션의 AI OFF 문항과 제출 답변이 일치하지 않습니다.")
