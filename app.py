@@ -188,6 +188,57 @@ def save_chat_exchange(session_id: str, user_message: str, reply: str):
         c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)", (session_id, reply))
 
 
+def level_from_score(score: int):
+    if score >= 75:
+        return "확인됨"
+    if score >= 45:
+        return "부분 확인"
+    return "추가 확인 필요"
+
+
+def parse_plain_evaluation(text: str, expected_ids: set[int]):
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ValueError("evaluation_json_invalid") from e
+
+    raw_results = data.get("results")
+    if not isinstance(raw_results, list):
+        raise ValueError("evaluation_results_missing")
+
+    parsed = []
+    seen = set()
+    for item in raw_results:
+        if not isinstance(item, dict):
+            continue
+        try:
+            question_id = int(item.get("question_id"))
+            score = int(round(float(item.get("score"))))
+        except (TypeError, ValueError):
+            continue
+        if question_id not in expected_ids or question_id in seen:
+            continue
+        score = max(0, min(100, score))
+        feedback = str(item.get("feedback") or "").strip()
+        if not feedback:
+            feedback = "답변의 핵심 내용을 평가기준과 다시 비교해 보세요."
+        parsed.append({
+            "question_id": question_id,
+            "score": score,
+            "level": level_from_score(score),
+            "feedback": feedback,
+        })
+        seen.add(question_id)
+
+    if seen != expected_ids:
+        raise ValueError("evaluation_question_mismatch")
+
+    overall_summary = str(data.get("overall_summary") or "").strip()
+    if not overall_summary:
+        overall_summary = "각 문항별 독립 수행 결과를 확인했습니다."
+    return parsed, overall_summary
+
+
 @app.get("/")
 def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
@@ -392,37 +443,106 @@ def off_submit(req: SubmitOffRequest):
     client = gemini_client()
     if not req.answers:
         raise HTTPException(400, "제출된 답변이 없습니다.")
+
     ids = [a.question_id for a in req.answers]
     marks = ",".join("?" for _ in ids)
     with connect_db() as c:
-        rows = c.execute(f"SELECT id,skill,question,criteria_json FROM off_questions WHERE session_id=? AND id IN ({marks})", [req.session_id] + ids).fetchall()
-    qmap = {r["id"]:r for r in rows}
+        rows = c.execute(
+            f"SELECT id,skill,question,criteria_json FROM off_questions WHERE session_id=? AND id IN ({marks})",
+            [req.session_id] + ids,
+        ).fetchall()
+
+    qmap = {r["id"]: r for r in rows}
+    answer_map = {a.question_id: a.answer for a in req.answers}
     items = []
     for a in req.answers:
         q = qmap.get(a.question_id)
-        if q:
-            items.append({"question_id":a.question_id, "skill":q["skill"], "question":q["question"], "criteria":json.loads(q["criteria_json"]), "answer":a.answer})
-    prompt = f"""다음은 AI OFF 단계에서 학생이 AI 도움 없이 작성한 답변이다.
+        if not q:
+            continue
+        items.append({
+            "question_id": a.question_id,
+            "skill": q["skill"],
+            "question": q["question"],
+            "criteria": json.loads(q["criteria_json"]),
+            "answer": a.answer,
+        })
 
-{json.dumps(items, ensure_ascii=False, indent=2)}
+    if len(items) != len(req.answers):
+        raise HTTPException(400, "현재 세션의 AI OFF 문항과 제출 답변이 일치하지 않습니다.")
 
-각 답변을 기준에 따라 평가하라.
-목표는 성적이 아니라 AI에 위임했던 사고 기능을 독립적으로 수행했는지 확인하는 것이다.
-score는 독립 수행 확인 정도 0~100이다.
-75 이상은 확인됨, 45~74는 부분 확인, 0~44는 추가 확인 필요로 분류한다.
-표현보다 사고 수행 여부를 우선한다.
-학생의 인격·지능·장기 능력을 판단하지 않는다.
-feedback에는 잘한 점과 다음에 직접 해볼 한 가지를 짧게 적는다.
-question_id와 skill은 입력값을 그대로 유지한다."""
+    prompt_blocks = []
+    for i, item in enumerate(items, 1):
+        criteria_text = "\n".join(f"- {x}" for x in item["criteria"])
+        prompt_blocks.append(
+            f"""[문항 {i}]
+question_id: {item['question_id']}
+사고 기능: {item['skill']}
+질문: {item['question']}
+학생 답변: {item['answer']}
+평가기준:
+{criteria_text}"""
+        )
+
+    prompt = f"""다음은 학생이 AI OFF 단계에서 AI 도움 없이 직접 작성한 답변입니다.
+질문, 학생 답변, 출제 시 저장된 평가기준만 사용하여 각 답변을 평가하세요.
+
+{chr(10).join(prompt_blocks)}
+
+평가 원칙:
+- 각 문항의 score만 0~100 정수로 판단하세요.
+- 문장 표현의 화려함보다 평가기준에 해당하는 사고를 실제로 수행했는지 우선합니다.
+- 확인되지 않은 내용을 학생이 맞게 썼다고 가정하지 마세요.
+- feedback은 잘한 점과 부족한 점 또는 다음에 직접 확인할 점을 2~3문장으로 작성하세요.
+- 학생의 지능, 성격, 장기 능력을 판단하지 마세요.
+- question_id는 위에 제시된 값을 그대로 사용하세요.
+- 등급(level)은 작성하지 마세요. 서버가 score로 계산합니다.
+
+아래 JSON 형식만 반환하세요. 마크다운 코드블록은 사용하지 마세요.
+{{
+  "results": [
+    {{"question_id": 1, "score": 80, "feedback": "..."}}
+  ],
+  "overall_summary": "이번 AI OFF 수행에 대한 1~2문장 요약"
+}}
+"""
+
     try:
-        r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":EvaluationResult})
-        result = structured(r, EvaluationResult)
+        r = gemini_generate(
+            client,
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+        parsed_results, overall_summary = parse_plain_evaluation(
+            (r.text or "").strip(),
+            set(ids),
+        )
     except Exception as e:
         raise HTTPException(502, f"AI OFF 답변 평가 오류: {type(e).__name__}")
 
-    answer_map = {a.question_id:a.answer for a in req.answers}
+    results = []
     with connect_db() as c:
         c.execute("DELETE FROM off_results WHERE session_id=?", (req.session_id,))
-        for x in result.results:
-            c.execute("INSERT INTO off_results(question_id,session_id,skill,answer,score,level,feedback) VALUES(?,?,?,?,?,?,?)", (x.question_id, req.session_id, x.skill, answer_map.get(x.question_id, ""), x.score, x.level, x.feedback))
-    return result.model_dump()
+        for x in parsed_results:
+            q = qmap[x["question_id"]]
+            result_item = {
+                "question_id": x["question_id"],
+                "skill": q["skill"],
+                "score": x["score"],
+                "level": x["level"],
+                "feedback": x["feedback"],
+            }
+            results.append(result_item)
+            c.execute(
+                "INSERT INTO off_results(question_id,session_id,skill,answer,score,level,feedback) VALUES(?,?,?,?,?,?,?)",
+                (
+                    x["question_id"],
+                    req.session_id,
+                    q["skill"],
+                    answer_map.get(x["question_id"], ""),
+                    x["score"],
+                    x["level"],
+                    x["feedback"],
+                ),
+            )
+
+    return {"results": results, "overall_summary": overall_summary}
