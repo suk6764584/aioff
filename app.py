@@ -301,8 +301,8 @@ def analyze(req: SessionRequest):
 delegation은 이번 세션에서 AI가 해당 핵심 사고를 대신 수행한 정도를 0~100으로 나타낸다.
 단순히 질문했다는 이유만으로 높은 점수를 주지 않는다.
 evidence는 실제 대화에서 확인되는 짧은 근거를 최대 2개 적는다.
-top_skills에는 위임 정도가 20 이상인 기능만 최대 3개를 높은 순서대로 넣는다.
-20 이상인 기능이 없으면 top_skills는 빈 배열로 둔다.
+top_skills에는 위임 정도가 0보다 큰 기능만 최대 3개를 높은 순서대로 넣는다.
+0보다 큰 기능이 없으면 top_skills는 빈 배열로 둔다.
 학생의 성향이나 장기 능력을 단정하지 않는다."""
     try:
         r = gemini_generate(client, contents=prompt, config={"response_mime_type":"application/json", "response_schema":AnalysisResult})
@@ -312,7 +312,7 @@ top_skills에는 위임 정도가 20 이상인 기능만 최대 3개를 높은 �
 
     data = result.model_dump()
     ranked = sorted(data["scores"], key=lambda x: x["delegation"], reverse=True)
-    data["top_skills"] = [x["skill"] for x in ranked if x["delegation"] >= 20][:3]
+    data["top_skills"] = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
 
     with connect_db() as c:
         c.execute("INSERT INTO analyses(session_id,result_json) VALUES(?,?) ON CONFLICT(session_id) DO UPDATE SET result_json=excluded.result_json, created_at=CURRENT_TIMESTAMP", (req.session_id, json.dumps(data, ensure_ascii=False)))
@@ -330,7 +330,7 @@ def off_test(req: SessionRequest):
 
     analysis = json.loads(row["result_json"]) if row else analyze(req)
     ranked = sorted(analysis["scores"], key=lambda x: x["delegation"], reverse=True)
-    top = [x["skill"] for x in ranked if x["delegation"] >= 20][:3]
+    top = [x["skill"] for x in ranked if x["delegation"] > 0][:3]
 
     if not top:
         raise HTTPException(400, "이번 세션에서는 AI에 의미 있게 위임한 사고 기능이 확인되지 않아 AI OFF 문제를 만들지 않았습니다.")
@@ -362,7 +362,7 @@ def off_test(req: SessionRequest):
 사고 기능 규칙:
 - skill은 반드시 위에 제시된 의미 있는 위임 기능 중 하나만 사용한다.
 - 위임 기능이 1개뿐이면 그 기능을 여러 문제에서 반복해서 사용해도 된다.
-- 위임 점수가 0이거나 20 미만인 기능을 억지로 검증하지 않는다.
+- 위임 점수가 0인 기능을 억지로 검증하지 않는다.
 
 문제 작성 규칙:
 - 방금 대화의 실제 주제와 내용을 활용한다.
