@@ -9,12 +9,18 @@ git pull --ff-only origin main
 echo "[2/6] Install/update dependencies"
 .venv/bin/pip install -r requirements.txt
 
-# Prototype mode: keep the existing API key, but use the lower-quota-cost model.
+# Prototype mode: keep secret keys, but pin the free-tier models.
 if [ -f .env ]; then
   if grep -q '^GEMINI_MODEL=' .env; then
     sed -i 's/^GEMINI_MODEL=.*/GEMINI_MODEL=gemini-3.5-flash-lite/' .env
   else
     printf '\nGEMINI_MODEL=gemini-3.5-flash-lite\n' >> .env
+  fi
+
+  if grep -q '^GROQ_MODEL=' .env; then
+    sed -i 's#^GROQ_MODEL=.*#GROQ_MODEL=openai/gpt-oss-20b#' .env
+  else
+    printf 'GROQ_MODEL=openai/gpt-oss-20b\n' >> .env
   fi
 fi
 
