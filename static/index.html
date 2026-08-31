@@ -15,10 +15,12 @@
 header{height:62px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:10}.brand{font-size:20px;font-weight:850}.badge{font-size:12px;padding:7px 11px;border-radius:999px;background:var(--soft);color:var(--accent);font-weight:750;white-space:nowrap}
 main{max-width:1120px;margin:28px auto;padding:0 18px 60px}.grid{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:20px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:0 6px 20px rgba(28,41,69,.05)}.hero{margin-bottom:20px}
 h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}h2{font-size:18px;margin:0 0 14px}p{line-height:1.62;margin:8px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}.meta .box{background:#fafbfe;border:1px solid var(--line);padding:14px;border-radius:12px}.label{font-size:12px;color:var(--muted);font-weight:750;margin-bottom:5px}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;margin:0 0 14px}.flow-step{background:#f7f9fd;border:1px solid var(--line);border-radius:10px;padding:9px 8px;font-size:11px;color:var(--muted);line-height:1.35}.flow-step strong{display:block;color:var(--text);font-size:12px;margin-bottom:3px}.flow-arrow{display:none}
 .chat{height:400px;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:14px;background:#fbfcff}.msg{max-width:80%;padding:11px 13px;border-radius:14px;margin:8px 0;line-height:1.55;word-break:break-word}.user{margin-left:auto;background:var(--accent);color:#fff;white-space:pre-wrap}.assistant{background:#fff;border:1px solid var(--line);white-space:normal}.assistant.streaming:after{content:'▍';display:inline-block;color:var(--accent);animation:blink .8s steps(1) infinite}.assistant>:first-child{margin-top:0}.assistant>:last-child{margin-bottom:0}.assistant p{margin:7px 0}.assistant ul,.assistant ol{margin:7px 0;padding-left:22px}.assistant li{margin:3px 0}.assistant h1,.assistant h2,.assistant h3,.assistant h4{font-size:1em;margin:12px 0 6px;letter-spacing:0}.assistant code{background:#f1f3f7;border-radius:5px;padding:1px 5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.assistant pre{overflow:auto;background:#f5f7fa;border:1px solid var(--line);border-radius:9px;padding:10px}.assistant pre code{background:transparent;padding:0}.assistant blockquote{margin:9px 0;padding:4px 0 4px 12px;border-left:3px solid #cfd7e6;color:#4c5a70}.assistant hr{border:0;border-top:1px solid var(--line);margin:12px 0}.assistant .katex-display{overflow-x:auto;overflow-y:hidden;margin:10px 0}@keyframes blink{50%{opacity:0}}
-.composer{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:10px;margin-top:12px}textarea{width:100%;min-height:68px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;line-height:1.5}button{border:0;border-radius:11px;padding:11px 15px;font-weight:750;cursor:pointer;white-space:nowrap}button:disabled{opacity:.55;cursor:not-allowed}.primary{background:var(--accent);color:#fff}.danger{background:#fff0f0;color:var(--danger)}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-.skill{margin:14px 0}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:13px}.bar{height:9px;border-radius:999px;background:#edf0f4;overflow:hidden;margin-top:6px}.fill{height:100%;background:var(--accent)}.offfill{height:100%;background:var(--green)}.evidence{font-size:12px;color:var(--muted);line-height:1.45;margin-top:5px}.question,.result-card{border:1px solid var(--line);border-radius:13px;padding:15px;margin:12px 0;background:#fcfdff}.why{font-size:12px;color:var(--muted);padding:8px 10px;background:#f5f7fb;border-radius:8px;margin-bottom:10px}.compare{display:grid;grid-template-columns:125px 1fr 54px;gap:10px;align-items:center;margin:9px 0;font-size:13px}.compare .bar{margin:0}.level{display:inline-block;font-size:12px;font-weight:750;padding:5px 8px;border-radius:999px;background:#eef8f4;color:#087b52}.hidden{display:none}.status{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}.error{color:#c43939}.footer-note{font-size:12px;color:var(--muted);margin-top:16px}
-@media(max-width:850px){header{padding:0 16px}.grid,.meta{grid-template-columns:1fr}.composer{grid-template-columns:1fr}.composer button{height:44px}.msg{max-width:92%}h1{font-size:23px}}
+.composer{display:grid;grid-template-columns:minmax(0,1fr) 84px;gap:10px;margin-top:12px}textarea{width:100%;min-height:68px;resize:vertical;border:1px solid var(--line);border-radius:12px;padding:12px;font:inherit;line-height:1.5}button{border:0;border-radius:11px;padding:11px 15px;font-weight:750;cursor:pointer;white-space:nowrap}button:disabled{opacity:.55;cursor:not-allowed}.primary{background:var(--accent);color:#fff}.danger{background:#fff0f0;color:var(--danger)}.secondary{background:var(--soft);color:var(--accent)}.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+.finish-help{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.5}.finish-help strong{color:var(--text)}
+.skill{margin:14px 0}.skill-head{display:flex;justify-content:space-between;gap:10px;font-size:13px}.bar{height:9px;border-radius:999px;background:#edf0f4;overflow:hidden;margin-top:6px}.fill{height:100%;background:var(--accent)}.offfill{height:100%;background:var(--green)}.evidence{font-size:12px;color:var(--muted);line-height:1.45;margin-top:5px}.question,.result-card{border:1px solid var(--line);border-radius:13px;padding:15px;margin:12px 0;background:#fcfdff}.why{font-size:12px;color:var(--muted);padding:8px 10px;background:#f5f7fb;border-radius:8px;margin-bottom:10px}.compare{display:grid;grid-template-columns:125px 1fr 54px;gap:10px;align-items:center;margin:9px 0;font-size:13px}.compare .bar{margin:0}.level{display:inline-block;font-size:12px;font-weight:750;padding:5px 8px;border-radius:999px;background:#eef8f4;color:#087b52}.hidden{display:none}.status{font-size:13px;color:var(--muted);margin-top:8px;line-height:1.5}.error{color:#c43939}.footer-note{font-size:12px;color:var(--muted);margin-top:16px}.metric-guide{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0 16px}.metric-guide>div{border:1px solid var(--line);border-radius:11px;padding:12px;background:#fafbfe;font-size:12px;line-height:1.55;color:var(--muted)}.metric-guide strong{display:block;color:var(--text);font-size:13px;margin-bottom:4px}.metric-guide .blue{color:var(--accent)}.metric-guide .green{color:var(--green)}
+@media(max-width:850px){header{padding:0 16px}.grid,.meta,.metric-guide{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}.composer{grid-template-columns:1fr}.composer button{height:44px}.msg{max-width:92%}h1{font-size:23px}}
 </style>
 </head>
 <body>
@@ -30,11 +32,35 @@ h1{font-size:27px;letter-spacing:-.8px;margin:0 0 8px}h2{font-size:18px;margin:0
 <div class="meta"><div class="box"><div class="label">간단 개요</div>AI를 쓰지 못하게 하는 서비스가 아니라, AI와 학습한 뒤 어떤 사고를 스스로 수행할 수 있는지 확인합니다.</div><div class="box"><div class="label">사용 데이터</div>서비스 내부 AI 대화, 세션별 위임 분석, AI OFF 문제·학생 답변·평가 결과</div></div>
 </section>
 <div class="grid">
-<section class="card"><h2>AI ON · 학습 대화</h2><div id="chat" class="chat"><div class="msg assistant">수행평가나 공부할 내용을 입력하세요. 대화가 끝나면 이번 세션에서 AI에 맡긴 사고 기능을 확인합니다.</div></div><div class="composer"><textarea id="input" placeholder="예: 청소년의 생성형 AI 활용을 학교에서 제한해야 하는지 보고서 구조를 잡아줘"></textarea><button id="send" class="primary">보내기</button></div><div class="row"><button id="finish" class="danger">AI 학습 종료</button></div><div id="chatStatus" class="status"></div></section>
-<aside class="card"><h2>이번 세션</h2><p class="status">학습 종료 후 이번 대화에서 AI에 맡긴 정도가 큰 사고 기능을 표시합니다.</p><div id="skills"></div><div id="analysisSummary" class="status"></div></aside>
+<section class="card">
+<h2>AI ON · 학습 대화</h2>
+<div class="flow">
+<div class="flow-step"><strong>1. AI와 학습</strong>궁금한 내용을 자유롭게 대화합니다.</div>
+<div class="flow-step"><strong>2. 학습 종료</strong>아래 종료 버튼을 누릅니다.</div>
+<div class="flow-step"><strong>3. 대화 분석</strong>AI에 맡긴 사고 기능을 찾습니다.</div>
+<div class="flow-step"><strong>4. AI OFF 문제</strong>해당 기능을 직접 수행하는 문제 3개가 나옵니다.</div>
+<div class="flow-step"><strong>5. 결과 확인</strong>AI에 맡긴 정도와 독립 수행 결과를 비교합니다.</div>
 </div>
-<section id="offSection" class="card hidden" style="margin-top:20px"><h2>AI OFF · 독립 수행 확인</h2><p>방금 학습 대화에서 AI에 많이 맡긴 사고 기능을 직접 수행할 수 있는지 확인합니다.</p><p class="status">이 단계부터 서비스 내 AI 채팅은 비활성화됩니다.</p><div id="questions"></div><button id="submitOff" class="primary">AI OFF 답변 제출</button><div id="offStatus" class="status"></div></section>
-<section id="resultSection" class="card hidden" style="margin-top:20px"><h2>이번 학습 결과</h2><p class="status">AI 위임 정도와 AI OFF에서 확인된 독립 수행 결과를 구분해 표시합니다.</p><div id="results"></div><div id="overall" class="status"></div><div class="footer-note">이 결과는 이번 세션의 수행만 보여주며 학생의 장기 능력이나 성향을 판단하지 않습니다.</div></section>
+<div id="chat" class="chat"><div class="msg assistant">수행평가나 공부할 내용을 입력하세요. 대화를 충분히 진행한 뒤 아래의 ‘학습 종료 · AI OFF 문제 만들기’를 누르면 이번 대화를 분석해 연습문제 3개를 만듭니다.</div></div>
+<div class="composer"><textarea id="input" placeholder="예: 청소년의 생성형 AI 활용을 학교에서 제한해야 하는지 보고서 구조를 잡아줘"></textarea><button id="send" class="primary">보내기</button></div>
+<div class="row"><button id="finish" class="danger">학습 종료 · AI OFF 문제 만들기</button></div>
+<div class="finish-help"><strong>연습문제를 풀고 싶다면:</strong> AI와 학습 대화를 마친 뒤 위 버튼을 누르세요. 대화를 분석한 후 바로 AI OFF 문제 3개가 생성됩니다.</div>
+<div id="chatStatus" class="status"></div>
+</section>
+<aside class="card"><h2>이번 세션</h2><p class="status"><strong>AI에 맡긴 정도</strong>는 이번 대화에서 해당 사고 기능을 AI가 대신 수행한 정도입니다. 0에 가까울수록 학생이 직접 수행했고, 100에 가까울수록 AI에 많이 맡긴 것으로 봅니다.</p><div id="skills"></div><div id="analysisSummary" class="status"></div></aside>
+</div>
+<section id="offSection" class="card hidden" style="margin-top:20px"><h2>AI OFF · 독립 수행 확인</h2><p>방금 학습 대화에서 AI에 많이 맡긴 사고 기능을 직접 수행할 수 있는지 확인합니다.</p><p class="status">이 단계부터 서비스 내 AI 채팅은 비활성화됩니다. 세 문제에 모두 답한 뒤 ‘AI OFF 답변 제출’을 누르세요.</p><div id="questions"></div><button id="submitOff" class="primary">AI OFF 답변 제출</button><div id="offStatus" class="status"></div></section>
+<section id="resultSection" class="card hidden" style="margin-top:20px">
+<h2>이번 학습 결과</h2>
+<p class="status">두 점수는 서로 다른 의미입니다. 하나는 학습 중 AI에 얼마나 맡겼는지, 다른 하나는 AI 없이 직접 수행한 결과를 보여줍니다.</p>
+<div class="metric-guide">
+<div><strong class="blue">AI에 맡긴 정도</strong>이번 AI ON 대화에서 해당 사고를 AI가 대신 수행한 정도입니다. <b>0</b>에 가까울수록 직접 수행했고, <b>100</b>에 가까울수록 AI에 많이 맡겼다는 뜻입니다.</div>
+<div><strong class="green">독립 수행 확인</strong>AI OFF 문제에서 해당 사고 기능을 직접 수행한 결과입니다. <b>100</b>에 가까울수록 이번 문제에서 평가기준을 충실하게 수행했다는 뜻입니다.</div>
+</div>
+<div id="results"></div><div id="overall" class="status"></div>
+<div class="footer-note">이 결과는 이번 세션의 수행만 보여주며 학생의 장기 능력이나 성향을 판단하지 않습니다.</div>
+<div class="row"><button id="newSession" class="secondary">새 학습 시작 · 초기화</button></div>
+</section>
 </main>
 <script>
 let sessionId=null,questions=[],delegationMap={},aiOffStarted=false,requestInFlight=false;
@@ -44,12 +70,8 @@ function renderAssistant(el,content){
   if(window.marked&&window.DOMPurify){
     const html=marked.parse(content,{breaks:true,gfm:true});
     el.innerHTML=DOMPurify.sanitize(html);
-    if(window.renderMathInElement){
-      renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});
-    }
-  }else{
-    el.textContent=content;
-  }
+    if(window.renderMathInElement){renderMathInElement(el,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}],throwOnError:false});}
+  }else{el.textContent=content;}
 }
 function addMsg(role,content){const el=document.createElement('div');el.className='msg '+(role==='user'?'user':'assistant');if(role==='assistant')renderAssistant(el,content);else el.textContent=content;chat.appendChild(el);chat.scrollTop=chat.scrollHeight;return el}
 function setError(el,msg){el.textContent=msg;el.classList.add('error')}
@@ -60,124 +82,50 @@ fetch('/health').then(r=>r.json()).then(d=>{badge.textContent=d.gemini_configure
 
 send.onclick=async()=>{
   if(aiOffStarted||requestInFlight)return;
-  const text=input.value.trim();
-  if(!text)return;
-
+  const text=input.value.trim();if(!text)return;
   requestInFlight=true;
-  const st=document.getElementById('chatStatus');
-  clearError(st);
-  addMsg('user',text);
-  input.value='';
-  send.disabled=true;
-  finish.disabled=true;
-  st.textContent='첫 답변을 준비하는 중...';
-
-  const aiEl=addMsg('assistant','');
-  aiEl.classList.add('streaming');
-
+  const st=document.getElementById('chatStatus');clearError(st);addMsg('user',text);input.value='';send.disabled=true;finish.disabled=true;st.textContent='첫 답변을 준비하는 중...';
+  const aiEl=addMsg('assistant','');aiEl.classList.add('streaming');
   try{
-    const r=await fetch('/api/chat-stream',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({session_id:sessionId,message:text})
-    });
-    if(!r.ok){
-      const d=await r.json().catch(()=>({}));
-      throw new Error(d.detail||'Gemini 응답 오류');
-    }
-
+    const r=await fetch('/api/chat-stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sessionId,message:text})});
+    if(!r.ok){const d=await r.json().catch(()=>({}));throw new Error(d.detail||'AI 응답 오류');}
     sessionId=r.headers.get('X-Session-Id')||sessionId;
-    const reader=r.body.getReader(),decoder=new TextDecoder();
-    let reply='',gotFirst=false;
-
-    while(true){
-      const {value,done}=await reader.read();
-      if(done)break;
-      if(value){
-        reply+=decoder.decode(value,{stream:true});
-        if(!gotFirst&&reply){
-          gotFirst=true;
-          st.textContent='답변 작성 중...';
-        }
-        renderAssistant(aiEl,reply);
-        chat.scrollTop=chat.scrollHeight;
-      }
-    }
-
-    reply+=decoder.decode();
-    renderAssistant(aiEl,reply);
-    if(reply.startsWith('Gemini 응답 오류:'))throw new Error(reply);
+    const reader=r.body.getReader(),decoder=new TextDecoder();let reply='',gotFirst=false;
+    while(true){const {value,done}=await reader.read();if(done)break;if(value){reply+=decoder.decode(value,{stream:true});if(!gotFirst&&reply){gotFirst=true;st.textContent='답변 작성 중...';}renderAssistant(aiEl,reply);chat.scrollTop=chat.scrollHeight;}}
+    reply+=decoder.decode();renderAssistant(aiEl,reply);
+    if(reply.startsWith('Gemini 응답 오류:')||reply.startsWith('Gemini 오류 후 Groq'))throw new Error(reply);
     st.textContent='';
-  }catch(e){
-    aiEl.remove();
-    setError(st,e.message);
-  }finally{
-    aiEl.classList.remove('streaming');
-    requestInFlight=false;
-    send.disabled=false;
-    finish.disabled=false;
-  }
+  }catch(e){aiEl.remove();setError(st,e.message);}finally{aiEl.classList.remove('streaming');requestInFlight=false;send.disabled=false;finish.disabled=false;}
 };
 
-input.addEventListener('keydown',e=>{
-  if(e.key==='Enter'&&!e.shiftKey){
-    e.preventDefault();
-    if(!requestInFlight)send.click();
-  }
-});
+input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!requestInFlight)send.click();}});
 
 finish.onclick=async()=>{
-  if(requestInFlight)return;
-  if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}
-  const st=document.getElementById('chatStatus');
-  clearError(st);
-  finish.disabled=true;
-  send.disabled=true;
-  input.disabled=true;
-  st.textContent='학습 대화를 분석하고 AI OFF 문제를 만드는 중...';
+  if(requestInFlight)return;if(!sessionId){alert('먼저 AI와 학습 대화를 진행하세요.');return}
+  const st=document.getElementById('chatStatus');clearError(st);finish.disabled=true;send.disabled=true;input.disabled=true;st.textContent='학습 대화를 분석하고 AI OFF 문제를 만드는 중...';
   try{
     const a=await api('/api/analyze',{session_id:sessionId});
     delegationMap=Object.fromEntries(a.scores.map(x=>[x.skill,x.delegation]));
     document.getElementById('skills').innerHTML=a.scores.map(x=>`<div class="skill"><div class="skill-head"><span>${x.skill}</span><strong>${x.delegation}</strong></div><div class="bar"><div class="fill" style="width:${x.delegation}%"></div></div><div class="evidence">${(x.evidence||[]).map(v=>'• '+v).join('<br>')}</div></div>`).join('');
     document.getElementById('analysisSummary').textContent=a.summary;
-
-    const t=await api('/api/off-test',{session_id:sessionId});
-    questions=t.questions;
+    const t=await api('/api/off-test',{session_id:sessionId});questions=t.questions;
     document.getElementById('questions').innerHTML=questions.map((q,i)=>`<div class="question"><div class="label">${q.skill}</div><p>${q.question}</p><div class="why">확인 이유: ${q.why_this_question}</div><textarea id="answer_${i}" placeholder="AI 도움 없이 직접 작성하세요."></textarea></div>`).join('');
-    aiOffStarted=true;
-    badge.textContent='AI OFF · 독립 수행';
-    st.textContent='';
-    document.getElementById('offSection').classList.remove('hidden');
-    document.getElementById('offSection').scrollIntoView({behavior:'smooth'});
-  }catch(e){
-    setError(st,e.message);
-    finish.disabled=false;
-    send.disabled=false;
-    input.disabled=false;
-  }
+    aiOffStarted=true;badge.textContent='AI OFF · 독립 수행';st.textContent='';document.getElementById('offSection').classList.remove('hidden');document.getElementById('offSection').scrollIntoView({behavior:'smooth'});
+  }catch(e){setError(st,e.message);finish.disabled=false;send.disabled=false;input.disabled=false;}
 };
 
 document.getElementById('submitOff').onclick=async()=>{
-  const st=document.getElementById('offStatus');
-  clearError(st);
+  const st=document.getElementById('offStatus');clearError(st);
   const answers=questions.map((q,i)=>({question_id:q.question_id,answer:document.getElementById(`answer_${i}`).value.trim()}));
   if(answers.some(a=>!a.answer)){setError(st,'세 문제에 모두 답변한 뒤 제출해주세요.');return}
-  document.getElementById('submitOff').disabled=true;
-  st.textContent='독립 수행 결과를 확인하는 중...';
+  document.getElementById('submitOff').disabled=true;st.textContent='독립 수행 결과를 확인하는 중...';
   try{
     const d=await api('/api/off-submit',{session_id:sessionId,answers});
-    document.getElementById('results').innerHTML=d.results.map(r=>{
-      const dg=delegationMap[r.skill]??0;
-      return `<div class="result-card"><div class="skill-head"><strong>${r.skill}</strong><span class="level">${r.level}</span></div><div class="compare"><span>AI 위임 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><strong>${dg}</strong></div><div class="compare"><span>독립 수행 확인</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><strong>${r.score}</strong></div><p class="status">${r.feedback}</p></div>`;
-    }).join('');
-    document.getElementById('overall').textContent=d.overall_summary;
-    document.getElementById('resultSection').classList.remove('hidden');
-    st.textContent='AI OFF 결과가 저장되었습니다.';
-    document.getElementById('resultSection').scrollIntoView({behavior:'smooth'});
-  }catch(e){
-    setError(st,e.message);
-    document.getElementById('submitOff').disabled=false;
-  }
+    document.getElementById('results').innerHTML=d.results.map(r=>{const dg=delegationMap[r.skill]??0;return `<div class="result-card"><div class="skill-head"><strong>${r.skill}</strong><span class="level">${r.level}</span></div><div class="compare"><span>AI에 맡긴 정도</span><div class="bar"><div class="fill" style="width:${dg}%"></div></div><strong>${dg}</strong></div><div class="compare"><span>독립 수행 확인</span><div class="bar"><div class="offfill" style="width:${r.score}%"></div></div><strong>${r.score}</strong></div><p class="status">${r.feedback}</p></div>`;}).join('');
+    document.getElementById('overall').textContent=d.overall_summary;document.getElementById('resultSection').classList.remove('hidden');st.textContent='AI OFF 결과가 저장되었습니다.';document.getElementById('resultSection').scrollIntoView({behavior:'smooth'});
+  }catch(e){setError(st,e.message);document.getElementById('submitOff').disabled=false;}
 };
+
+document.getElementById('newSession').onclick=()=>{location.reload();};
 </script>
 </body></html>
