@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import List, Literal
@@ -161,6 +161,29 @@ def gemini_generate(client, *, contents, config=None, attempts: int = 3):
     raise last_error
 
 
+def chat_prompt(session_id: str, user_message: str):
+    prior = messages(session_id, 12)
+    history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
+    return f"""너는 중·고등학생의 수행평가와 학습을 돕는 AI 튜터다.
+학생 대신 과제를 통째로 완성하기보다 학생이 스스로 판단할 수 있도록 설명, 질문, 예시를 제공한다.
+학생이 요청한 초안·구조·근거는 필요한 범위에서 도울 수 있다.
+확인되지 않은 사실·통계·출처는 만들지 말고 검증이 필요하면 명시한다.
+답변은 한국어로 자연스럽고 간결하게 작성한다.
+
+[이전 대화]
+{history or '(없음)'}
+
+[학생의 새 요청]
+{user_message}"""
+
+
+def save_chat_exchange(session_id: str, user_message: str, reply: str):
+    with connect_db() as c:
+        c.execute("INSERT OR IGNORE INTO sessions(id) VALUES(?)", (session_id,))
+        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)", (session_id, user_message))
+        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)", (session_id, reply))
+
+
 @app.get("/")
 def index():
     return FileResponse(BASE_DIR / "static" / "index.html")
@@ -175,33 +198,88 @@ def health():
 def chat(req: ChatRequest):
     client = gemini_client()
     sid = req.session_id or str(uuid.uuid4())
-
-    prior = messages(sid, 18)
-    history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
-    prompt = f"""너는 중·고등학생의 수행평가와 학습을 돕는 AI 튜터다.
-학생 대신 과제를 통째로 완성하기보다 학생이 스스로 판단할 수 있도록 설명, 질문, 예시를 제공한다.
-학생이 요청한 초안·구조·근거는 필요한 범위에서 도울 수 있다.
-확인되지 않은 사실·통계·출처는 만들지 말고 검증이 필요하면 명시한다.
-답변은 한국어로 자연스럽고 간결하게 작성한다.
-
-[이전 대화]
-{history or '(없음)'}
-
-[학생의 새 요청]
-{req.message}"""
+    prompt = chat_prompt(sid, req.message)
     try:
-        r = gemini_generate(client, contents=prompt)
+        from google.genai import types
+        config = types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_level="low")
+        )
+        r = gemini_generate(client, contents=prompt, config=config)
         reply = (r.text or "").strip()
         if not reply:
             raise ValueError("empty")
     except Exception as e:
         raise HTTPException(502, f"Gemini 응답 오류: {type(e).__name__}")
 
-    with connect_db() as c:
-        c.execute("INSERT OR IGNORE INTO sessions(id) VALUES(?)", (sid,))
-        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'user', ?)", (sid, req.message))
-        c.execute("INSERT INTO messages(session_id, role, content) VALUES(?, 'assistant', ?)", (sid, reply))
+    save_chat_exchange(sid, req.message, reply)
     return {"session_id": sid, "reply": reply}
+
+
+@app.post("/api/chat-stream")
+def chat_stream(req: ChatRequest):
+    client = gemini_client()
+    sid = req.session_id or str(uuid.uuid4())
+    prompt = chat_prompt(sid, req.message)
+
+    def generate():
+        reply_parts = []
+        emitted = False
+        last_error = None
+        transient_names = {
+            "ServerError",
+            "ServiceUnavailable",
+            "InternalServerError",
+            "DeadlineExceeded",
+            "ResourceExhausted",
+        }
+
+        for attempt in range(3):
+            try:
+                from google.genai import types
+                config = types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(thinking_level="low")
+                )
+                stream = client.models.generate_content_stream(
+                    model=model_name(),
+                    contents=prompt,
+                    config=config,
+                )
+                for chunk in stream:
+                    text = (getattr(chunk, "text", None) or "")
+                    if text:
+                        emitted = True
+                        reply_parts.append(text)
+                        yield text
+
+                reply = "".join(reply_parts).strip()
+                if not reply:
+                    raise ValueError("empty")
+                save_chat_exchange(sid, req.message, reply)
+                return
+            except Exception as e:
+                last_error = e
+                if emitted:
+                    yield "\n\n응답 전송이 중단되었습니다. 같은 질문을 다시 보내주세요."
+                    return
+                status = getattr(e, "status_code", None) or getattr(e, "code", None)
+                transient = type(e).__name__ in transient_names or status in {429, 500, 502, 503, 504}
+                if not transient or attempt == 2:
+                    yield f"Gemini 응답 오류: {type(e).__name__}"
+                    return
+                time.sleep(0.5 * (2 ** attempt))
+
+        if last_error:
+            yield f"Gemini 응답 오류: {type(last_error).__name__}"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "X-Session-Id": sid,
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/api/analyze")
