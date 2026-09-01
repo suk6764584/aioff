@@ -25,7 +25,7 @@ if [ -f .env ]; then
 fi
 
 echo "[3/6] Syntax check"
-.venv/bin/python -m py_compile app.py literacy_app.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_media_app.py migrate_db.py
 
 echo "[4/6] Database migration"
 .venv/bin/python migrate_db.py
