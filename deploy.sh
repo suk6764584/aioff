@@ -88,6 +88,12 @@ for lesson_id, prefix in expected.items():
     if not all(x.startswith(prefix) for x in ids):
         raise SystemExit(f"ERROR: {lesson_id} contains wrong case type: {ids}")
 
+# 청소년 주제는 실제 13-19세 사례만 허용합니다.
+for case in m.flow.CASE_LIBRARY.get('ai', []):
+    rows = {str(x.get('label','')): str(x.get('value','')) for x in case.get('data_rows', [])}
+    if '13-19세' not in rows.get('연도·집단', ''):
+        raise SystemExit(f"ERROR: non-youth OTT case exposed: {case.get('id')}")
+
 payload = m._topic_payload()
 for lesson_id in expected:
     if len(payload.get(lesson_id, [])) < 3:
@@ -103,12 +109,29 @@ required_page_markers = (
     'kobaco_ott_',
     '실제 조사 원자료 항목 보기',
     'function fixedDataMedia(c,kind,title,intro)',
+    '사례 기본정보',
+    '관련 자료에서 확인되는 내용',
 )
 for marker in required_page_markers:
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
 
-# 마지막 caseMedia 구현이 세 유형을 직접 처리해야 합니다.
+# 확인되지 않은 설명용 fallback 문장은 학생 화면/소스에 다시 들어오면 안 됩니다.
+banned_copy = (
+    'AI 인식 키워드만으로 광고의 뜻을 정하지 말고',
+    '제목과 AI 키워드만으로 전체 메시지를 정하지 말고',
+    '광고 맥락을 먼저 확인합니다.',
+)
+source = open('literacy_kobaco_app_10.py', encoding='utf-8').read()
+for text in banned_copy:
+    if text in source or text in page:
+        raise SystemExit(f"ERROR: placeholder AiSAC copy returned: {text}")
+
+# 확인된 맥락이 없는 AiSAC 사례는 context_summary가 비어 있어야 합니다.
+for case in m.flow.CASE_LIBRARY.get('news', []):
+    if not case.get('context_url') and case.get('context_summary'):
+        raise SystemExit(f"ERROR: unverified context summary exposed: {case.get('id')}")
+
 last_case_media = page.rfind('function caseMedia(c)')
 if last_case_media < 0:
     raise SystemExit('ERROR: final caseMedia renderer missing')
@@ -123,8 +146,6 @@ if not hasattr(m, 'kobaco_ai_chat_stream'):
     raise SystemExit('ERROR: adaptive AI tutor route missing')
 if hasattr(m, 'kobaco_instant_chat_stream'):
     raise SystemExit('ERROR: old canned instant tutor route is still exposed')
-
-source = open('literacy_kobaco_app_10.py', encoding='utf-8').read()
 if 'def _lesson_reply(' in source:
     raise SystemExit('ERROR: old canned lesson reply function still present')
 if '첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다' not in source:
@@ -132,7 +153,7 @@ if '첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다' not i
 if '세 데이터 유형을 여기서 직접 렌더링해 재귀 호출을 완전히 끊습니다.' not in source:
     raise SystemExit('ERROR: recursion guard renderer missing')
 
-print('TOPIC MAPPING + UI + ADAPTIVE TUTOR + RENDERER REGRESSION OK')
+print('TOPIC MAPPING + VERIFIED CONTEXT + ADAPTIVE TUTOR + RENDERER REGRESSION OK')
 PY
 
 echo "[5/7] Database migration"
@@ -156,9 +177,15 @@ echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기' 'function fixedDataMedia(c,kind,title,intro)'; do
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기' 'function fixedDataMedia(c,kind,title,intro)' '사례 기본정보' '관련 자료에서 확인되는 내용'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
+    exit 1
+  fi
+done
+for banned in 'AI 인식 키워드만으로 광고의 뜻을 정하지 말고' '제목과 AI 키워드만으로 전체 메시지를 정하지 말고' '광고 맥락을 먼저 확인합니다.'; do
+  if grep -q "$banned" /tmp/aioff_root.html || grep -q "$banned" literacy_kobaco_app_10.py; then
+    echo "ERROR: placeholder AiSAC copy returned: $banned"
     exit 1
   fi
 done
@@ -170,5 +197,5 @@ if grep -q 'def _lesson_reply(' literacy_kobaco_app_10.py; then
   echo "ERROR: canned lesson reply still present"
   exit 1
 fi
-echo "ROOT PAGE + 3 TOPICS + ADAPTIVE AI TUTOR + DIRECT CASE RENDERER OK"
+echo "ROOT PAGE + VERIFIED CONTEXT + 3 TOPICS + ADAPTIVE AI TUTOR OK"
 echo "DEPLOY OK"
