@@ -19,6 +19,31 @@ v6 = previous.v6
 v4 = previous.v4
 
 
+# AiSAC과 OTT도 화면에서 실제로 읽을 자료와 첫 질문이 같은 순서를 따르도록 맞춥니다.
+for case in flow.CASE_LIBRARY.get("news", []):
+    title = str(case.get("title") or "광고")
+    questions = [
+        f"먼저 AiSAC에서 '{title}' 원본 광고를 확인해보세요. 실제 영상에서 사람이 이해한 내용 하나와, 화면에 나온 AI 인식값 하나를 골라 둘이 같은지 다른지 말해보세요.",
+        f"'{title}' 원본 광고를 본 뒤, AI가 뽑은 키워드만으로는 알기 어려운 장면의 맥락이나 메시지를 하나 찾아보세요.",
+        "원본 광고와 AI 인식 결과를 나란히 봤을 때, AI가 잘 잡은 부분 하나와 사람이 직접 봐야 알 수 있는 부분 하나를 골라보세요.",
+    ]
+    case["opening_questions"] = questions
+    case["opening_question"] = questions[0]
+
+for case in flow.CASE_LIBRARY.get("ai", []):
+    group = next(
+        (str(row.get("value") or "") for row in case.get("data_rows", []) if row.get("label") == "연도·집단"),
+        str(case.get("title") or "이 집단"),
+    )
+    questions = [
+        f"먼저 {group}의 조사 조건과 서비스별 이용 비율을 같이 보세요. 이 표로 확실히 말할 수 있는 사실 하나와, 이 표만으로는 말할 수 없는 해석 하나를 나눠보세요.",
+        "가장 높은 이용 비율을 보고 곧바로 '가장 좋아하는 서비스'라고 말해도 될까요? 표의 항목 이름과 조사 대상을 근거로 판단해보세요.",
+        "연도·연령집단·사례수까지 확인한 뒤, 이 결과를 다른 연령이나 전체 청소년에게 그대로 확대해도 되는지 이유와 함께 말해보세요.",
+    ]
+    case["opening_questions"] = questions
+    case["opening_question"] = questions[0]
+
+
 def _topic_payload() -> dict[str, list[dict[str, Any]]]:
     payload: dict[str, list[dict[str, Any]]] = {}
     for lesson_id in ("news", "deepfake", "ai"):
@@ -115,9 +140,11 @@ AiSAC이 기록한 사물·장소·키워드는 AI가 광고 화면에서 인식
 현재 학생 답변 횟수: {turn}
 
 진행 규칙:
+- 학생이 먼저 원본 광고를 확인했다는 전제로, 학생이 실제 영상에서 본 장면·문구·흐름과 AiSAC 인식값을 비교한다.
 - 학생 답변을 먼저 읽고, 학생이 말한 내용 중 'DB로 확인되는 것'과 '사람의 해석'을 구분한다.
 - 키워드·광고주·인식 횟수를 한꺼번에 나열하지 말고, 학생 답에 필요한 값만 골라 설명한다.
 - AI가 인식한 키워드와 사람이 광고에서 이해한 메시지가 왜 다를 수 있는지 구체적으로 설명한다.
+- 원본을 보지 않은 학생에게 키워드만 보고 광고 의미를 추측하게 하지 않는다. 먼저 원본 확인 방법을 안내한다.
 - 중요한 해석은 원본 영상·문구·전체 맥락을 추가로 확인해야 한다는 기준을 실제 상황에 적용시킨다.
 - 2~3회 대화 후에는 다른 광고에도 적용할 수 있는 'AI 인식값 ≠ 의미 확정' 기준을 학생 말로 정리하게 한다.
 '''
@@ -130,7 +157,8 @@ AiSAC이 기록한 사물·장소·키워드는 AI가 광고 화면에서 인식
 현재 학생 답변 횟수: {turn}
 
 진행 규칙:
-- 학생이 표에서 읽은 결론을 먼저 확인하고, '이용률'과 '선호도'를 구분한다.
+- 학생이 먼저 연도·연령집단·사례수와 서비스별 이용 비율을 함께 읽도록 한다.
+- 학생이 표에서 읽은 결론을 확인하고, '이용률'과 '선호도'를 구분한다.
 - 수치를 소개할 때는 연도·집단·사례수 등 조건과 함께 말한다.
 - 학생이 '가장 좋아한다'처럼 표에 없는 개념으로 확대하면 왜 근거가 부족한지 설명한다.
 - 표에서 직접 말할 수 있는 문장 하나와 추가 확인이 필요한 문장 하나를 구분하게 한다.
@@ -289,6 +317,11 @@ def _render_index_kobaco_v10():
     topic_json = json.dumps(_topic_payload(), ensure_ascii=False).replace("</", "<\\/")
 
     replacements = {
+        "실제 미디어 데이터를 읽고,<br>AI와 해석 기준을 연습합니다.": "미디어를 보고,<br>생각하고, 데이터로 확인해요.",
+        "AI와 해석 기준을 연습합니다.": "미디어를 보고, 생각하고, 데이터로 확인해요.",
+        "공식 교육·조사자료를 바탕으로 정리한 뉴스·딥페이크·AI 답변 검증 기준을 사례로 연습합니다. 학습을 마치면 AI OFF가 방금 대화를 분석해, 같은 판단 기준을 혼자 적용해보는 문제 3개를 만듭니다.": "실제 KOBACO 광고·공익광고·미디어 이용 자료를 보고, 내가 본 내용과 조사 결과를 비교하며 미디어를 읽는 방법을 연습합니다.",
+        "기존 AI OFF는 그대로": "마지막에는 혼자 풀어봐요",
+        "AI와 학습한 대화를 분석하고 AI가 대신한 사고를 학생이 직접 다시 수행하는 기존 구조를 유지합니다. 이번에는 학습 주제를 디지털 리터러시로 구체화했습니다.": "학습이 끝나면 같은 기준을 새 문제에 직접 적용해봅니다. 답을 고친 뒤 다시 확인할 수도 있습니다.",
         "실제 KOBACO 데이터에서 바로 시작합니다.": "실제 KOBACO 자료로 배워요.",
         "주제를 고르면 KOBACO Parquet DB에서 구성한 실제 데이터 사례가 무작위로 나타납니다.": "주제를 고르면 실제 자료 사례 3개가 나타납니다.",
         "사례를 선택하면 사진·기사·문서와 DB 조회값, 판단할 주장을 보여주고 AI가 바로 첫 질문을 합니다.": "사례를 선택하고 자료를 살펴본 뒤 내 생각을 적으면 AI가 답에 맞춰 함께 읽어줍니다.",
@@ -318,7 +351,14 @@ def _render_index_kobaco_v10():
 .kobaco-fixed-head{padding:15px 16px 11px;border-bottom:1px solid #e2dbd1;background:#f8f5ef}
 .kobaco-fixed-head small{display:block;font-size:9px;font-weight:900;color:#74695f;margin-bottom:5px}.kobaco-fixed-head strong{display:block;font-size:16px;line-height:1.4;color:#27231f}
 .kobaco-fixed-intro{padding:12px 16px;font-size:11px;line-height:1.6;color:#625a52;border-bottom:1px solid #e6dfd5}
-@media(max-width:650px){.kobaco-readable-metrics{grid-template-columns:1fr}.kobaco-topic-preview{height:72px}}
+.kobaco-source-step{padding:15px 16px;background:#fff7ef;border-bottom:1px solid #eadbcb}
+.kobaco-source-step b{display:block;font-size:13px;color:#2e2924;margin-bottom:5px}.kobaco-source-step p{font-size:11px;line-height:1.6;color:#62584f;margin:0 0 10px}
+.kobaco-source-btn{display:inline-flex;align-items:center;text-decoration:none;background:#2d2925;color:#fff!important;border-radius:7px;padding:8px 11px;font-size:10px;font-weight:850}
+.aisac-compare{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:14px;background:#f8f5ef;border-bottom:1px solid #e1d9cf}
+.aisac-panel{background:#fff;border:1px solid #ddd5ca;border-radius:9px;padding:12px}.aisac-panel small{display:block;font-size:9px;font-weight:900;color:#81756a;margin-bottom:6px}.aisac-panel strong{display:block;font-size:12px;line-height:1.5;color:#2b2723;margin-bottom:6px}.aisac-panel p{font-size:10px;line-height:1.55;color:#6b625a;margin:0}
+.ott-context{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:14px;background:#f8f5ef;border-bottom:1px solid #e2dbd1}.ott-context div{background:#fff;border:1px solid #ddd5ca;border-radius:8px;padding:10px}.ott-context small{display:block;font-size:9px;color:#7b7168;margin-bottom:4px}.ott-context b{font-size:12px;line-height:1.4;color:#2c2824}
+.ott-bars{padding:14px 16px;background:#fff;border-bottom:1px solid #e2dbd1}.ott-bars h4{font-size:12px;margin:0 0 11px}.ott-bar{display:grid;grid-template-columns:100px 1fr 50px;gap:9px;align-items:center;margin:8px 0;font-size:10px}.ott-bar-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ott-bar-track{height:9px;border-radius:999px;background:#eee8df;overflow:hidden}.ott-bar-track i{display:block;height:100%;background:#4e6680;border-radius:999px}.ott-bar-value{text-align:right;font-weight:850}.ott-lesson{padding:13px 16px;background:#fff7ef;font-size:11px;line-height:1.65;color:#5f554c}.ott-lesson b{color:#292521}
+@media(max-width:650px){.kobaco-readable-metrics,.aisac-compare,.ott-context{grid-template-columns:1fr}.kobaco-topic-preview{height:72px}.ott-bar{grid-template-columns:82px 1fr 44px}}
 '''
     page = page.replace("</style>", extra_css + "\n</style>")
 
@@ -339,8 +379,8 @@ function fixedSample(lessonId){{
 function fixedPreview(c){{
   const id=String(c.id||'');
   if(id.startsWith('kobaco_publicad_')) return `<div class="kobaco-picker-media"><img src="/api/kobaco-media-thumb/${{encodeURIComponent(c.id)}}" alt="${{esc(c.title||'공익광고')}} 썸네일" loading="lazy"></div>`;
-  if(id.startsWith('kobaco_aisac_')) return `<div class="kobaco-topic-preview aisac"><b>AI가 읽은 광고</b><span>AiSAC 인식값과 사람의 해석을 구분합니다.</span></div>`;
-  if(id.startsWith('kobaco_ott_')) return `<div class="kobaco-topic-preview ott"><b>청소년·OTT 통계</b><span>이용률과 선호도를 구분하고 조사 조건을 확인합니다.</span></div>`;
+  if(id.startsWith('kobaco_aisac_')) return `<div class="kobaco-topic-preview aisac"><b>AI가 읽은 광고</b><span>원본 광고와 AiSAC 인식값을 비교합니다.</span></div>`;
+  if(id.startsWith('kobaco_ott_')) return `<div class="kobaco-topic-preview ott"><b>청소년·OTT 통계</b><span>조사 조건과 서비스별 이용 비율을 함께 읽습니다.</span></div>`;
   return '';
 }}
 function fixedPickerHtml(lessonId,activeId=null){{
@@ -376,10 +416,6 @@ function fixedRows(c){{
 function fixedRawRows(c){{
   return (c.data_rows||[]).map(r=>`<div class="kobaco-data-row"><b>${{esc(r.label||'항목')}}</b><span>${{esc(r.value||'-')}}</span></div>`).join('');
 }}
-function fixedDataMedia(c,kind,title,intro){{
-  const tables=(c.db_tables||[]).map(x=>esc(x)).join(' · ');
-  return `<div class="chat-case-media"><div class="kobaco-fixed-data"><div class="kobaco-fixed-head"><small>${{esc(kind)}}</small><strong>${{esc(title)}}</strong></div><div class="kobaco-fixed-intro">${{esc(intro)}}</div><div class="kobaco-data-body"><div class="kobaco-data-kicker">KOBACO 실제 데이터 · ${{tables}}</div><div class="kobaco-data-table">${{fixedRawRows(c)}}</div><div class="kobaco-data-note">${{esc(c.data_note||'KOBACO 실제 데이터 조회값')}}</div></div></div></div>`;
-}}
 function fixedArchiveButton(c){{
   const url=c.archive_url||c.source_url||'';
   if(!url)return '';
@@ -387,6 +423,44 @@ function fixedArchiveButton(c){{
 }}
 function fixedVideoButton(c){{
   return `<a class="kobaco-ad-action video" href="/api/kobaco-video/${{encodeURIComponent(c.id)}}" target="_blank" rel="noopener">▶ 광고 영상 보기</a>`;
+}}
+function aisacSearchUrl(c){{
+  return `https://aisac.kobaco.co.kr/site/main/advideo/list_all_top?kwdVal=${{encodeURIComponent(c.title||'')}}&listType=list&pageSize=12`;
+}}
+function aisacLearningCard(c){{
+  const rows=fixedRows(c);
+  const advertiser=rows['광고주']||'-';
+  const category=rows['업종']||'-';
+  const keywords=rows['키워드']||'-';
+  const counts=rows['인식 횟수']||'-';
+  return `<div class="chat-case-media"><div class="kobaco-fixed-data">
+    <div class="kobaco-fixed-head"><small>AI가 읽은 광고 · AiSAC</small><strong>${{esc(c.title||'광고')}}</strong></div>
+    <div class="kobaco-source-step"><b>1. 원본 광고를 먼저 봅니다.</b><p>키워드만 보고 광고 뜻을 맞히는 수업이 아닙니다. KOBACO AiSAC 광고 아카이브에서 같은 광고의 실제 영상·장면·문구를 먼저 확인하세요.</p><a class="kobaco-source-btn" href="${{aisacSearchUrl(c)}}" target="_blank" rel="noopener">AiSAC에서 원본 광고 찾기 ↗</a></div>
+    <div class="aisac-compare">
+      <div class="aisac-panel"><small>사람이 원본에서 읽을 내용</small><strong>장면의 흐름 · 자막/내레이션 · 앞뒤 맥락</strong><p>영상 전체를 본 뒤 광고가 무엇을 보여주고 어떤 의미로 느껴졌는지 내 말로 정리합니다.</p></div>
+      <div class="aisac-panel"><small>AiSAC이 기록한 내용</small><strong>${{esc(keywords)}}</strong><p>${{esc(counts)}} · 이 값은 AI가 화면에서 찾아낸 관찰값이며 광고의 뜻 자체는 아닙니다.</p></div>
+    </div>
+    <div class="kobaco-why"><b>2. 두 결과를 비교합니다.</b>광고주 ${{esc(advertiser)}} · 업종 ${{esc(category)}}. AI가 잘 잡은 요소와, 원본을 봐야만 알 수 있는 맥락을 나눠보세요.</div>
+    <details class="kobaco-evidence"><summary>AiSAC 실제 데이터 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-table">${{fixedRawRows(c)}}</div><div class="kobaco-data-note">${{esc(c.data_note||'KOBACO AiSAC 실제 조회값')}}</div></div></details>
+  </div></div>`;
+}}
+function ottPairs(value){{
+  return String(value||'').split('·').map(x=>x.trim()).map(x=>{{const m=x.match(/^(.*?)\s+([0-9]+(?:\.[0-9]+)?)%$/);return m?{{name:m[1].trim(),value:Number(m[2])}}:null;}}).filter(Boolean);
+}}
+function ottLearningCard(c){{
+  const rows=fixedRows(c);
+  const group=rows['연도·집단']||c.title||'-';
+  const sample=rows['사례수']||'-';
+  const nonuse=rows['OTT 비이용']||'-';
+  const pairs=ottPairs(rows['이용비율 상위']);
+  const bars=pairs.map(p=>`<div class="ott-bar"><span class="ott-bar-name">${{esc(p.name)}}</span><span class="ott-bar-track"><i style="width:${{Math.max(0,Math.min(100,p.value))}}%"></i></span><span class="ott-bar-value">${{p.value.toFixed(1)}}%</span></div>`).join('');
+  return `<div class="chat-case-media"><div class="kobaco-fixed-data">
+    <div class="kobaco-fixed-head"><small>청소년·OTT 통계</small><strong>${{esc(group)}}</strong></div>
+    <div class="ott-context"><div><small>누구를 봤나요?</small><b>${{esc(group)}}</b></div><div><small>사례수</small><b>${{esc(sample)}}</b></div><div><small>OTT 비이용</small><b>${{esc(nonuse)}}</b></div></div>
+    <div class="ott-bars"><h4>서비스별 이용 비율 상위</h4>${{bars||'<div class="kobaco-fixed-intro">이용비율 값을 불러오지 못했습니다.</div>'}}</div>
+    <div class="ott-lesson"><b>이 표가 직접 말하는 것:</b> 이 연도·연령집단에서 각 서비스를 이용한 비율입니다.<br><b>이 표만으로 말할 수 없는 것:</b> 가장 좋아하는 서비스, 만족도, 다른 연령이나 전체 청소년의 성향입니다.</div>
+    <details class="kobaco-evidence"><summary>실제 조사 데이터 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-table">${{fixedRawRows(c)}}</div><div class="kobaco-data-note">${{esc(c.data_note||'KOBACO OTT 실제 조회값')}}</div></div></details>
+  </div></div>`;
 }}
 function kobacoPublicLearningCard(c){{
   const rowsMap=fixedRows(c);
@@ -411,14 +485,13 @@ function kobacoPublicLearningCard(c){{
   </div></div>`;
 }}
 
-// 이전 v5의 caseMedia는 비공익광고에서 자기 자신을 다시 호출할 수 있었습니다.
-// 세 데이터 유형을 여기서 직접 렌더링해 재귀 호출을 완전히 끊습니다.
+// 세 데이터 유형을 각각의 학습 목적에 맞게 직접 렌더링합니다.
 function caseMedia(c){{
   const id=String(c?.id||'');
   if(id.startsWith('kobaco_publicad_'))return kobacoPublicLearningCard(c);
-  if(id.startsWith('kobaco_aisac_'))return fixedDataMedia(c,'AI가 읽은 광고',c.title||'AiSAC 광고 인식','AI가 광고에서 인식한 키워드·사물·장소는 관찰값입니다. 이 값과 사람이 이해한 광고의 의미를 구분해봅니다.');
-  if(id.startsWith('kobaco_ott_'))return fixedDataMedia(c,'청소년·OTT 통계',c.title||'연령별 OTT 이용','이 표는 특정 연도와 연령집단의 이용 비율을 보여줍니다. 이용률을 선호도나 전체 청소년의 성향으로 바꾸어 말하지 않는 법을 연습합니다.');
-  return fixedDataMedia(c,'KOBACO 실제 자료',c.title||'실제 자료','화면에 표시된 데이터가 직접 말해주는 범위와 추가 해석이 필요한 부분을 구분합니다.');
+  if(id.startsWith('kobaco_aisac_'))return aisacLearningCard(c);
+  if(id.startsWith('kobaco_ott_'))return ottLearningCard(c);
+  return `<div class="chat-case-media"><div class="kobaco-fixed-data"><div class="kobaco-fixed-head"><small>KOBACO 실제 자료</small><strong>${{esc(c.title||'실제 자료')}}</strong></div><div class="kobaco-data-body"><div class="kobaco-data-table">${{fixedRawRows(c)}}</div></div></div></div>`;
 }}
 
 const oldCards=[...document.querySelectorAll('.lesson-card')];
