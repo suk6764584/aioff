@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600" viewBox="0 0 1600 600">
+  <rect width="1600" height="600" fill="#F6F1E8"/>
+  <text x="70" y="76" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#24211D">문제의 핵심 · ‘AI를 썼는가’보다 ‘무엇을 AI에 맡겼는가’</text>
+  <g font-family="Arial, sans-serif">
+    <rect x="80" y="150" width="420" height="310" rx="24" fill="#FFFDFC" stroke="#E3DDD3" stroke-width="3"/>
+    <text x="120" y="205" font-size="25" font-weight="700" fill="#356FE8">일반적인 AI 학습 흐름</text>
+    <text x="120" y="265" font-size="22" fill="#24211D">질문 → AI 답변 → 과제 완료</text>
+    <line x1="120" y1="305" x2="455" y2="305" stroke="#E3DDD3" stroke-width="2"/>
+    <text x="120" y="350" font-size="20" fill="#5B5650">결과물은 빠르게 나오지만</text>
+    <text x="120" y="382" font-size="20" fill="#5B5650">어떤 판단·검증을 AI가 대신했는지는</text>
+    <text x="120" y="414" font-size="20" font-weight="700" fill="#24211D">학습 종료 시 별도로 확인하기 어렵다.</text>
+
+    <path d="M545 305 H690" stroke="#F06A3C" stroke-width="6"/><polygon points="690,305 665,290 665,320" fill="#F06A3C"/>
+    <text x="558" y="278" font-size="18" font-weight="700" fill="#F06A3C">검증 공백</text>
+
+    <rect x="725" y="150" width="795" height="310" rx="24" fill="#FFFDFC" stroke="#F06A3C" stroke-width="3"/>
+    <text x="765" y="205" font-size="25" font-weight="700" fill="#F06A3C">AI OFF가 추가하는 단계</text>
+    <text x="765" y="260" font-size="21" fill="#24211D">① 대화 전체에서 AI가 도운 사고 기능 분석</text>
+    <text x="765" y="305" font-size="21" fill="#24211D">② 위임도가 높은 기능을 골라 맞춤 문제 생성</text>
+    <text x="765" y="350" font-size="21" fill="#24211D">③ AI를 끄고 같은 판단 기준을 학생이 직접 적용</text>
+    <text x="765" y="395" font-size="21" fill="#24211D">④ AI 도움과 직접 수행 결과를 나란히 비교</text>
+    <rect x="765" y="425" width="700" height="64" rx="14" fill="#FFF0E9"/>
+    <text x="790" y="466" font-size="21" font-weight="700" fill="#A84620">AI 사용을 막는 것이 아니라, AI 도움 이후의 ‘독립 수행’을 학습 과정에 넣는다.</text>
+  </g>
+</svg>

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="650" viewBox="0 0 1600 650">
+  <rect width="1600" height="650" fill="#F6F1E8"/>
+  <text x="70" y="72" font-family="Arial, sans-serif" font-size="34" font-weight="700" fill="#24211D">KOBACO 실제 데이터 → 리터러시 사례 → AI OFF</text>
+  <text x="70" y="108" font-family="Arial, sans-serif" font-size="18" fill="#5B5650">초기 프로토타입은 8개 Parquet 테이블을 DuckDB로 조회해 세 가지 실제 데이터 사례를 구성합니다.</text>
+  <g font-family="Arial, sans-serif">
+    <rect x="70" y="165" width="410" height="310" rx="22" fill="#FFFDFC" stroke="#356FE8" stroke-width="3"/>
+    <text x="105" y="215" font-size="25" font-weight="700" fill="#356FE8">AiSAC 광고 분석</text>
+    <text x="105" y="257" font-size="17" fill="#8A837A">aisac_ad_info</text>
+    <text x="105" y="286" font-size="17" fill="#8A837A">aisac_ai_keywords</text>
+    <line x1="105" y1="320" x2="445" y2="320" stroke="#E3DDD3" stroke-width="2"/>
+    <text x="105" y="360" font-size="19" fill="#24211D">실제 광고 영상 + AI 인식 키워드</text>
+    <text x="105" y="395" font-size="19" fill="#24211D">→ 광고 의미·맥락을 함께 판단</text>
+
+    <rect x="595" y="165" width="410" height="310" rx="22" fill="#FFFDFC" stroke="#F06A3C" stroke-width="3"/>
+    <text x="630" y="215" font-size="25" font-weight="700" fill="#F06A3C">공익광고 효과조사</text>
+    <text x="630" y="257" font-size="17" fill="#8A837A">public_ad_master</text>
+    <text x="630" y="286" font-size="17" fill="#8A837A">effect_channel / impact / persuasiveness</text>
+    <line x1="630" y1="320" x2="970" y2="320" stroke="#E3DDD3" stroke-width="2"/>
+    <text x="630" y="360" font-size="19" fill="#24211D">광고를 먼저 읽고 자신의 판단 작성</text>
+    <text x="630" y="395" font-size="19" fill="#24211D">→ 실제 조사 결과와 비교·해석</text>
+
+    <rect x="1120" y="165" width="410" height="310" rx="22" fill="#FFFDFC" stroke="#2E8A66" stroke-width="3"/>
+    <text x="1155" y="215" font-size="25" font-weight="700" fill="#2E8A66">청소년 OTT 이용 통계</text>
+    <text x="1155" y="257" font-size="17" fill="#8A837A">ott_usage_by_demographic</text>
+    <text x="1155" y="286" font-size="17" fill="#8A837A">13–19세 집단 사례</text>
+    <line x1="1155" y1="320" x2="1495" y2="320" stroke="#E3DDD3" stroke-width="2"/>
+    <text x="1155" y="360" font-size="19" fill="#24211D">서비스별 이용비율을 직접 읽고</text>
+    <text x="1155" y="395" font-size="19" fill="#24211D">→ 이용률과 선호도를 구분해 해석</text>
+
+    <path d="M275 500 V555 H800" stroke="#8A837A" stroke-width="4" fill="none"/>
+    <path d="M800 475 V555" stroke="#8A837A" stroke-width="4"/>
+    <path d="M1325 500 V555 H800" stroke="#8A837A" stroke-width="4" fill="none"/>
+    <polygon points="800,583 786,555 814,555" fill="#F06A3C"/>
+    <rect x="585" y="565" width="430" height="62" rx="16" fill="#FFF0E9" stroke="#F06A3C" stroke-width="2"/>
+    <text x="630" y="605" font-size="22" font-weight="700" fill="#A84620">AI OFF · 같은 판단 기준을 학생이 직접 다시 수행</text>
+  </g>
+</svg>
