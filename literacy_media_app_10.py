@@ -6,6 +6,7 @@ import literacy_media_app_9 as previous
 # 사례 학습 대화만 '질문 반복형'에서 '판단-교정-설명-적용'형으로 보강합니다.
 flow = previous.flow
 app = previous.app
+_render_index_v9 = previous._render_index_v9
 
 
 def _case_chat_prompt_v10(session_id: str, user_message: str, lesson_id: str):
