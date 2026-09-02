@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import html
 import re
-from urllib.parse import quote, unquote, urljoin
+from urllib.parse import urljoin
+from urllib.request import Request as URLRequest, urlopen
 
 from fastapi import Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -16,25 +17,18 @@ v11 = previous.previous
 
 _ASSET_CACHE: dict[str, dict[str, str]] = {}
 
-_LINK_PATTERNS = (
-    re.compile(r'(?:href|data-href|data-url)=["\']([^"\']+)["\']', re.I),
-    re.compile(r'(?:location\.href|window\.location|location)\s*=\s*["\']([^"\']+)["\']', re.I),
+# 검색결과에서 실제 공개 상세페이지 링크만 사용합니다.
+_VIEW_PATTERN = re.compile(
+    r'(?:https?://aisac\.kobaco\.co\.kr)?(/site/main/advideo/view\?advId=[0-9a-fA-F\-]{36})',
+    re.I,
 )
 _MEDIA_PATTERNS = (
     # AiSAC 실제 상세페이지는 .mp4 확장자 없이 /advideo/video/... 엔드포인트를 사용합니다.
     re.compile(r'<source[^>]+src=["\']([^"\']*/site/main/advideo/video/[^"\']+)["\']', re.I),
     re.compile(r'<source[^>]+src=["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
     re.compile(r'<video[^>]+src=["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
-    re.compile(r'["\'](?:file|src|videoUrl|video_url|movieUrl|movie_url|fileUrl|file_url|vodUrl|vod_url)["\']\s*[:=]\s*["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
-    re.compile(r'(https?://[^"\'\s<>]+\.(?:mp4|webm|ogg)(?:\?[^"\'\s<>]*)?)', re.I),
-    re.compile(r'["\']([^"\']+/[^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
 )
-_IFRAME_PATTERN = re.compile(r'<iframe[^>]+src=["\']([^"\']+)["\']', re.I)
 _POSTER_PATTERN = re.compile(r'<video[^>]+poster=["\']([^"\']+)["\']', re.I)
-_ID_PATTERNS = (
-    re.compile(r'advId(?:=|%3D|\s*[:=]\s*["\']?)([A-Za-z0-9_\-]{4,})', re.I),
-    re.compile(r'(?:view|detail|goView|fnView|moveView)[^(]*\([^)]*["\']([A-Za-z0-9_\-]{4,})["\']', re.I),
-)
 
 
 def _clean_url(value: str, base_url: str) -> str:
@@ -49,55 +43,30 @@ def _clean_url(value: str, base_url: str) -> str:
 def _title_areas(page: str, title: str, radius: int = 16000) -> list[str]:
     text = html.unescape(page or "")
     if not title:
-        return [text]
+        return []
     positions = [m.start() for m in re.finditer(re.escape(title), text, re.I)]
-    areas = [text[max(0, pos - radius):pos + radius] for pos in positions[:8]]
-    areas.append(text)
-    return areas
+    return [text[max(0, pos - radius):pos + radius] for pos in positions[:8]]
 
 
 def _detail_candidates(page: str, search_url: str, title: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
-
-    def add(raw: str) -> None:
-        url = _clean_url(raw, search_url)
-        if not url or url in seen:
-            return
-        low = url.lower()
-        if "aisac.kobaco.co.kr" not in low or "/advideo/" not in low:
-            return
-        if "list_all_top" in low:
-            return
-        seen.add(url)
-        out.append(url)
-
     for area in _title_areas(page, title):
-        for pattern in _LINK_PATTERNS:
-            for match in pattern.finditer(area):
-                add(match.group(1))
-        for pattern in _ID_PATTERNS:
-            for match in pattern.finditer(area):
-                adv_id = unquote(match.group(1)).strip()
-                if not adv_id:
-                    continue
-                encoded = quote(adv_id, safe="-_~")
-                for path in (
-                    "/site/main/advideo/view_all_top?advId=",
-                    "/site/main/advideo/view?advId=",
-                    "/site/main/advideo/detail?advId=",
-                    "/site/main/advideo/view_top?advId=",
-                ):
-                    add("https://aisac.kobaco.co.kr" + path + encoded)
-    return out[:16]
+        for match in _VIEW_PATTERN.finditer(area):
+            url = _clean_url(match.group(1), search_url)
+            if url and url not in seen:
+                seen.add(url)
+                out.append(url)
+    return out
 
 
 def _extract_media(page: str, base_url: str) -> str:
     text = html.unescape(page or "").replace("\\/", "/")
     for pattern in _MEDIA_PATTERNS:
-        for match in pattern.finditer(text):
+        match = pattern.search(text)
+        if match:
             url = _clean_url(match.group(1), base_url)
-            if url:
+            if url and "xxx.mp4" not in url.lower():
                 return url
     return ""
 
@@ -106,20 +75,31 @@ def _extract_poster(page: str, base_url: str) -> str:
     match = _POSTER_PATTERN.search(page or "")
     if not match:
         return ""
-    return _clean_url(match.group(1), base_url)
+    url = _clean_url(match.group(1), base_url)
+    if "bg_login" in url.lower():
+        return ""
+    return url
 
 
-def _extract_iframe(page: str, base_url: str) -> str:
-    candidates = []
-    for match in _IFRAME_PATTERN.finditer(page or ""):
-        url = _clean_url(match.group(1), base_url)
-        if url:
-            candidates.append(url)
-    for url in candidates:
-        low = url.lower()
-        if any(word in low for word in ("player", "video", "media", "vod", "advideo")):
-            return url
-    return candidates[0] if candidates else ""
+def _is_real_video(url: str, referer: str) -> bool:
+    if not url or "xxx.mp4" in url.lower():
+        return False
+    headers = {
+        "User-Agent": v11._USER_AGENT,
+        "Accept": "video/*,*/*;q=0.8",
+        "Range": "bytes=0-31",
+        "Referer": referer,
+    }
+    try:
+        with urlopen(URLRequest(url, headers=headers), timeout=10) as response:
+            content_type = str(response.headers.get("Content-Type") or "").lower()
+            first = response.read(32)
+        if content_type.startswith("video/"):
+            return True
+        # MP4는 일반적으로 4바이트 길이 뒤에 ftyp 시그니처가 옵니다.
+        return len(first) >= 8 and first[4:8] == b"ftyp"
+    except Exception:
+        return False
 
 
 def _resolve_assets(case) -> dict[str, str]:
@@ -135,26 +115,24 @@ def _resolve_assets(case) -> dict[str, str]:
         search_page = v11._fetch_html(search_url)
         candidates = _detail_candidates(search_page, search_url, title)
 
-        # 기존 resolver에서 확인한 상세주소만 후보로 활용합니다. 임의 이미지/영상은 재사용하지 않습니다.
-        legacy = v11._resolve_aisac_assets(case)
-        if legacy.get("detail") and legacy["detail"] not in candidates:
-            candidates.insert(0, legacy["detail"])
-
         for detail_url in candidates:
             try:
                 detail_page = v11._fetch_html(detail_url, referer=search_url)
             except Exception:
                 continue
-            # 실제 광고 제목 또는 AiSAC 영상 태그가 있는 상세페이지를 채택합니다.
-            low_page = detail_page.lower()
-            if title and title.lower() not in low_page and "/site/main/advideo/video/" not in low_page:
+
+            # 검색된 광고 제목이 실제 상세페이지에도 있어야 같은 사례로 인정합니다.
+            if title and title.lower() not in detail_page.lower():
                 continue
+
+            video_url = _extract_media(detail_page, detail_url)
+            if not video_url or not _is_real_video(video_url, detail_url):
+                continue
+
             assets["detail"] = detail_url
-            assets["video"] = _extract_media(detail_page, detail_url)
-            assets["iframe"] = _extract_iframe(detail_page, detail_url)
+            assets["video"] = video_url
             assets["thumb"] = _extract_poster(detail_page, detail_url)
-            if assets["video"] or assets["iframe"]:
-                break
+            break
     except Exception as exc:
         base.core.logger.warning("AiSAC v13 resolve failed for %s: %s", case_id, type(exc).__name__)
 
@@ -208,7 +186,7 @@ def aisac_video_v13(case_id: str, request: FastAPIRequest):
         return Response(status_code=404)
     return v11._proxy_remote(
         assets["video"], request,
-        referer=assets["detail"] or str(case.get("aisac_search_url") or ""),
+        referer=assets["detail"],
         fallback_type="video/mp4",
     )
 
@@ -224,9 +202,6 @@ def aisac_player_v13(case_id: str):
         body = f'''<video controls preload="metadata" poster="{poster}" playsinline>
           <source src="/api/aisac-video/{case_id}" type="video/mp4">
         </video>'''
-    elif assets["iframe"]:
-        src = html.escape(assets["iframe"], quote=True)
-        body = f'<iframe src="{src}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>'
     elif assets["detail"]:
         src = html.escape(assets["detail"], quote=True)
         body = f'''<a class="fallback" href="{src}" target="_blank" rel="noopener">
@@ -237,9 +212,8 @@ def aisac_player_v13(case_id: str):
 
     return HTMLResponse(f'''<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#171513}}
-video,iframe,.poster,.fallback{{width:100%;height:100%;display:block;border:0}}
+video,.poster,.fallback{{width:100%;height:100%;display:block;border:0}}
 video{{object-fit:contain;background:#171513}}
-iframe{{background:#171513}}
 .poster{{object-fit:contain}}
 .fallback{{position:relative;text-decoration:none;color:#fff}}
 .fallback img{{width:100%;height:100%;object-fit:contain;display:block}}
