@@ -3,11 +3,11 @@ from __future__ import annotations
 import html
 import re
 from datetime import date
-from urllib.parse import quote, urljoin
-from urllib.request import Request, urlopen
+from urllib.parse import quote, unquote, urljoin
+from urllib.request import Request as URLRequest, urlopen
 
-from fastapi import HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi import HTTPException, Request as FastAPIRequest
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 
 import literacy_kobaco_app_10 as previous
 
@@ -22,6 +22,7 @@ AISAC_START_DATE = "2020-01-01"
 AISAC_END_DATE = date.today().isoformat()
 AISAC_SEARCH_BASE = "https://aisac.kobaco.co.kr/site/main/advideo/list_all_top"
 AISAC_DETAIL_BASE = "https://aisac.kobaco.co.kr/site/main/advideo/view?advId="
+_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36"
 
 
 def _aisac_search_url(title: str) -> str:
@@ -155,11 +156,11 @@ def _public_case_v11(case):
 flow._public_case = _public_case_v11
 
 
-_UUID = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+# AiSAC advId가 반드시 UUID라는 가정을 두지 않습니다.
 _DETAIL_PATTERNS = (
-    re.compile(rf"/site/main/advideo/view\?advId=({_UUID})", re.I),
-    re.compile(rf"advId(?:=|%3D|\s*[:=]\s*[\"']?)({_UUID})", re.I),
-    re.compile(rf"(?:view|detail|goView|fnView|moveView)[^(]*\([^)]*[\"']({_UUID})[\"']", re.I),
+    re.compile(r'/site/main/advideo/view\?advId=([^"\'&<>\s]+)', re.I),
+    re.compile(r'advId(?:=|%3D|\s*[:=]\s*["\']?)([A-Za-z0-9_\-]{4,})', re.I),
+    re.compile(r'(?:view|detail|goView|fnView|moveView)[^(]*\([^)]*["\']([A-Za-z0-9_\-]{4,})["\']', re.I),
 )
 _IMG_PATTERNS = (
     re.compile(r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image|twitter:image:src)["\'][^>]+content=["\']([^"\']+)', re.I),
@@ -170,8 +171,9 @@ _IMG_PATTERNS = (
 _VIDEO_PATTERNS = (
     re.compile(r'<source[^>]+src=["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
     re.compile(r'<video[^>]+src=["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
-    re.compile(r'["\'](?:file|src|videoUrl|video_url|movieUrl|movie_url)["\']\s*[:=]\s*["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
+    re.compile(r'["\'](?:file|src|videoUrl|video_url|movieUrl|movie_url|fileUrl|file_url|vodUrl|vod_url)["\']\s*[:=]\s*["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
     re.compile(r'(https?://[^"\'\s<>]+\.(?:mp4|webm)(?:\?[^"\'\s<>]*)?)', re.I),
+    re.compile(r'["\']([^"\']+/[^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
 )
 _AISAC_ASSET_CACHE: dict[str, dict[str, str]] = {}
 
@@ -185,23 +187,23 @@ def _clean_asset_url(value: str, base_url: str) -> str:
     return urljoin(base_url, raw)
 
 
-def _fetch_html(url: str, limit: int = 3_000_000) -> str:
-    request = Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36",
-            "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
-        },
-    )
-    with urlopen(request, timeout=8) as response:
+def _fetch_html(url: str, limit: int = 3_500_000, referer: str = "") -> str:
+    headers = {
+        "User-Agent": _USER_AGENT,
+        "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
+    }
+    if referer:
+        headers["Referer"] = referer
+    request = URLRequest(url, headers=headers)
+    with urlopen(request, timeout=10) as response:
         raw = response.read(limit)
     return raw.decode("utf-8", errors="ignore")
 
 
-def _title_areas(page: str, title: str, radius: int = 6000) -> list[str]:
+def _title_areas(page: str, title: str, radius: int = 12000) -> list[str]:
     text = html.unescape(page or "")
     positions = [m.start() for m in re.finditer(re.escape(title), text, re.I)] if title else []
-    areas = [text[max(0, pos - radius): pos + radius] for pos in positions[:5]]
+    areas = [text[max(0, pos - radius): pos + radius] for pos in positions[:8]]
     areas.append(text)
     return areas
 
@@ -211,7 +213,7 @@ def _extract_adv_id(page: str, title: str) -> str:
         for pattern in _DETAIL_PATTERNS:
             match = pattern.search(area)
             if match:
-                return match.group(1)
+                return unquote(match.group(1)).strip()
     return ""
 
 
@@ -221,7 +223,7 @@ def _extract_image(page: str, base_url: str, title: str = "") -> str:
             for match in pattern.finditer(area):
                 candidate = _clean_asset_url(match.group(1), base_url)
                 low = candidate.lower()
-                if candidate and not any(x in low for x in ("logo", "icon", "favicon", "spinner", "loading")):
+                if candidate and not any(x in low for x in ("logo", "icon", "favicon", "spinner", "loading", "common/")):
                     return candidate
     return ""
 
@@ -229,9 +231,10 @@ def _extract_image(page: str, base_url: str, title: str = "") -> str:
 def _extract_video(page: str, base_url: str) -> str:
     text = html.unescape(page or "").replace("\\/", "/")
     for pattern in _VIDEO_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            return _clean_asset_url(match.group(1), base_url)
+        for match in pattern.finditer(text):
+            candidate = _clean_asset_url(match.group(1), base_url)
+            if candidate:
+                return candidate
     return ""
 
 
@@ -248,11 +251,11 @@ def _resolve_aisac_assets(case) -> dict[str, str]:
         assets["thumb"] = _extract_image(search_page, search_url, title)
         adv_id = _extract_adv_id(search_page, title)
         if adv_id:
-            detail_url = AISAC_DETAIL_BASE + adv_id
+            detail_url = AISAC_DETAIL_BASE + quote(adv_id, safe="-_~")
             assets["detail"] = detail_url
-            detail_page = _fetch_html(detail_url)
+            detail_page = _fetch_html(detail_url, referer=search_url)
             assets["video"] = _extract_video(detail_page, detail_url)
-            detail_thumb = _extract_image(detail_page, detail_url)
+            detail_thumb = _extract_image(detail_page, detail_url, title)
             if detail_thumb:
                 assets["thumb"] = detail_thumb
     except Exception as exc:
@@ -269,6 +272,44 @@ def _aisac_case(case_id: str):
     return found[1]
 
 
+def _proxy_remote(url: str, request: FastAPIRequest, referer: str = "", fallback_type: str = "application/octet-stream"):
+    headers = {
+        "User-Agent": _USER_AGENT,
+        "Accept": request.headers.get("accept", "*/*"),
+    }
+    if referer:
+        headers["Referer"] = referer
+    range_header = request.headers.get("range")
+    if range_header:
+        headers["Range"] = range_header
+
+    try:
+        upstream = urlopen(URLRequest(url, headers=headers), timeout=20)
+    except Exception as exc:
+        base.core.logger.warning("AiSAC media proxy failed: %s", type(exc).__name__)
+        return Response(status_code=502)
+
+    status = getattr(upstream, "status", 200) or 200
+    content_type = upstream.headers.get("Content-Type") or fallback_type
+    response_headers = {"Cache-Control": "public, max-age=1800"}
+    for key in ("Content-Length", "Content-Range", "Accept-Ranges"):
+        value = upstream.headers.get(key)
+        if value:
+            response_headers[key] = value
+
+    def iterator():
+        try:
+            while True:
+                chunk = upstream.read(256 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            upstream.close()
+
+    return StreamingResponse(iterator(), status_code=status, media_type=content_type, headers=response_headers)
+
+
 @app.get("/api/aisac-open/{case_id}")
 def aisac_open(case_id: str):
     case = _aisac_case(case_id)
@@ -279,37 +320,51 @@ def aisac_open(case_id: str):
 
 
 @app.get("/api/aisac-thumb/{case_id}")
-def aisac_thumbnail(case_id: str):
+def aisac_thumbnail(case_id: str, request: FastAPIRequest):
     case = _aisac_case(case_id)
     assets = _resolve_aisac_assets(case)
     if assets["thumb"]:
-        return RedirectResponse(assets["thumb"], status_code=302)
+        return _proxy_remote(
+            assets["thumb"],
+            request,
+            referer=assets["detail"] or str(case.get("aisac_search_url") or ""),
+            fallback_type="image/jpeg",
+        )
     title = html.escape(str(case.get("title") or "KOBACO AiSAC 광고"))
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
-    <rect width="1280" height="720" fill="#25211d"/>
-    <text x="72" y="92" fill="#f1a47b" font-family="Arial,sans-serif" font-size="24" font-weight="700">KOBACO AiSAC</text>
-    <foreignObject x="72" y="185" width="1120" height="300"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;color:white;font-size:50px;font-weight:800;line-height:1.25">{title}</div></foreignObject>
-    <circle cx="112" cy="610" r="34" fill="#ee7440"/><polygon points="103,590 103,630 132,610" fill="white"/>
+    <rect width="1280" height="720" fill="#e9e4dc"/>
+    <text x="72" y="92" fill="#df6635" font-family="Arial,sans-serif" font-size="24" font-weight="700">KOBACO AiSAC</text>
+    <foreignObject x="72" y="185" width="1120" height="280"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;color:#2a2521;font-size:48px;font-weight:800;line-height:1.25">{title}</div></foreignObject>
+    <text x="72" y="600" fill="#766b61" font-family="Arial,sans-serif" font-size="22">원본 페이지에서 미리보기를 불러오는 중입니다.</text>
     </svg>'''
-    return Response(svg.encode("utf-8"), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=1800"})
+    return Response(svg.encode("utf-8"), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=600"})
 
 
 @app.get("/api/aisac-video/{case_id}")
-def aisac_video(case_id: str):
+def aisac_video(case_id: str, request: FastAPIRequest):
     case = _aisac_case(case_id)
     assets = _resolve_aisac_assets(case)
     if not assets["video"]:
         return Response(status_code=404)
-    return RedirectResponse(assets["video"], status_code=302)
+    return _proxy_remote(
+        assets["video"],
+        request,
+        referer=assets["detail"] or str(case.get("aisac_search_url") or ""),
+        fallback_type="video/mp4",
+    )
 
 
 def _render_index_kobaco_v11():
     page = previous._render_index_kobaco_v10()
     patch = r'''
 <style>
-.fact-grid{grid-template-columns:1.45fr .8fr 1fr .85fr}
-.aisac-video-stage{position:relative;background:#171513;border-bottom:1px solid #ded5ca;aspect-ratio:16/9;overflow:hidden}.aisac-video-stage video{width:100%;height:100%;display:block;object-fit:contain;background:#111}.aisac-video-stage video::cue{font-size:14px}.aisac-card-title{padding:11px 15px;background:#fff;border-bottom:1px solid #e2dbd1;font-size:12px;font-weight:900;line-height:1.45}.aisac-picker-media{height:86px;margin:-10px -10px 9px;overflow:hidden;border-radius:7px 7px 4px 4px;background:#26211d}.aisac-picker-media img{width:100%;height:100%;object-fit:cover;display:block}
-@media(max-width:650px){.fact-grid{grid-template-columns:1fr}.aisac-video-stage{aspect-ratio:16/9}.aisac-picker-media{height:72px}}
+.aisac-learning-grid{display:grid;grid-template-columns:minmax(270px,.92fr) minmax(0,1.08fr);background:#fff;border-bottom:1px solid #ded5ca}
+.aisac-media-column{min-width:0;border-right:1px solid #e1d9cf;background:#f7f4ef}.aisac-info-column{min-width:0;background:#fff}
+.aisac-video-stage{position:relative;height:228px;background:#171513;overflow:hidden}.aisac-video-stage video{position:relative;z-index:2;width:100%;height:100%;display:block;object-fit:contain;background:transparent}.aisac-video-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}.aisac-video-stage.video-failed video{display:none}.aisac-video-fallback{display:none;position:absolute;inset:0;z-index:3;align-items:center;justify-content:center;text-align:center;padding:20px;background:rgba(24,21,18,.72);color:#fff;font-size:11px;line-height:1.55}.aisac-video-stage.video-failed .aisac-video-fallback{display:flex}
+.aisac-card-title{padding:9px 12px;background:#fff;border-top:1px solid #e2dbd1;font-size:11px;font-weight:900;line-height:1.35}.aisac-compact-actions{padding:8px 10px;background:#fff}.aisac-compact-actions .context-actions{margin:0;gap:6px}.aisac-compact-actions .context-actions a{padding:6px 8px;font-size:9px}
+.aisac-info-column .fact-grid{grid-template-columns:1fr 1fr;padding:9px;gap:6px}.aisac-info-column .fact-grid div{padding:8px}.aisac-info-column .fact-grid small{font-size:8px}.aisac-info-column .fact-grid b{font-size:10px;line-height:1.3}.aisac-info-column .verified-context{padding:9px 11px}.aisac-info-column .verified-context p{font-size:10px;line-height:1.45}.aisac-info-column .aisac-result{padding:10px 11px}.aisac-info-column .aisac-result small{font-size:8px}.aisac-info-column .aisac-result strong{font-size:11px;line-height:1.45;max-height:66px;overflow:auto}.aisac-info-column .aisac-result p{font-size:9px;margin-top:4px}.aisac-info-column details{margin:0}.aisac-info-column details summary{font-size:9px}
+.aisac-picker-media{height:86px;margin:-10px -10px 9px;overflow:hidden;border-radius:7px 7px 4px 4px;background:#eee8df}.aisac-picker-media img{width:100%;height:100%;object-fit:cover;display:block}
+@media(max-width:700px){.aisac-learning-grid{grid-template-columns:1fr}.aisac-media-column{border-right:0}.aisac-video-stage{height:185px}.aisac-info-column .fact-grid{grid-template-columns:1fr 1fr}.aisac-picker-media{height:72px}}
 </style>
 <script>
 function fixedPreview(c){
@@ -322,6 +377,10 @@ function fixedPreview(c){
 function aisacSearchUrl(c){
   return c.aisac_search_url || `https://aisac.kobaco.co.kr/site/main/advideo/list_all_top?kwdVal=${encodeURIComponent(c.title||'')}&listType=list&pageSize=12&startDate=2020-01-01&endDate=${new Date().toISOString().slice(0,10)}&sortDirection=DESC&sortOrder=ADV_LIKE`;
 }
+function aisacVideoFailed(el){
+  const stage=el.closest('.aisac-video-stage');
+  if(stage)stage.classList.add('video-failed');
+}
 function aisacLearningCard(c){
   const r=fixedRows(c);
   const direct=`/api/aisac-open/${encodeURIComponent(c.id)}`;
@@ -330,15 +389,19 @@ function aisacLearningCard(c){
   const search=aisacSearchUrl(c);
   const related=c.context_url?`<a class="alt" href="${esc(c.context_url)}" target="_blank" rel="noopener">${esc(c.context_label||'관련 자료 보기')} ↗</a>`:'';
   const verified=c.context_summary?`<div class="verified-context"><small>관련 자료에서 확인되는 내용</small><p>${esc(c.context_summary)}</p></div>`:'';
-  return `<div class="chat-case-media"><div class="kobaco-data-card">
-    <div class="aisac-video-stage"><video controls preload="metadata" poster="${thumb}"><source src="${video}" type="video/mp4"></video></div>
-    <div class="aisac-card-title">${esc(c.title||'-')}</div>
-    <div class="context-card"><div class="context-actions"><a href="${direct}" target="_blank" rel="noopener">AiSAC 원본 페이지 ↗</a><a class="alt" href="${esc(search)}" target="_blank" rel="noopener">검색 결과 ↗</a>${related}</div></div>
-    <div class="fact-grid"><div><small>광고명</small><b>${esc(c.title||'-')}</b></div><div><small>등록일</small><b>${esc(r['등록일']||c.registration_date||'-')}</b></div><div><small>광고주</small><b>${esc(r['광고주']||'-')}</b></div><div><small>업종</small><b>${esc(r['업종']||'-')}</b></div></div>
-    ${verified}
-    <div class="aisac-result"><small>AiSAC이 인식한 키워드</small><strong>${esc(r['키워드']||'-')}</strong><p>${esc(r['인식 횟수']||'-')}</p></div>
-    <details class="kobaco-evidence"><summary>AiSAC 실제 데이터 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-table">${fixedRawRows(c)}</div></div></details>
-  </div></div>`;
+  return `<div class="chat-case-media"><div class="kobaco-data-card"><div class="aisac-learning-grid">
+    <div class="aisac-media-column">
+      <div class="aisac-video-stage"><img class="aisac-video-poster" src="${thumb}" alt="${esc(c.title||'AiSAC 광고')} 썸네일"><video controls preload="metadata" poster="${thumb}" onerror="aisacVideoFailed(this)"><source src="${video}" type="video/mp4"></video><div class="aisac-video-fallback">이 사례는 브라우저에서 직접 재생할 영상 주소를 확인하지 못했습니다.<br>아래 원본 페이지에서 바로 볼 수 있습니다.</div></div>
+      <div class="aisac-card-title">${esc(c.title||'-')}</div>
+      <div class="aisac-compact-actions"><div class="context-actions"><a href="${direct}" target="_blank" rel="noopener">원본 페이지 ↗</a><a class="alt" href="${esc(search)}" target="_blank" rel="noopener">검색 결과 ↗</a>${related}</div></div>
+    </div>
+    <div class="aisac-info-column">
+      <div class="fact-grid"><div><small>등록일</small><b>${esc(r['등록일']||c.registration_date||'-')}</b></div><div><small>광고주</small><b>${esc(r['광고주']||'-')}</b></div><div><small>업종</small><b>${esc(r['업종']||'-')}</b></div><div><small>검색 범위</small><b>2020-01-01 이후</b></div></div>
+      ${verified}
+      <div class="aisac-result"><small>AiSAC이 인식한 키워드</small><strong>${esc(r['키워드']||'-')}</strong><p>${esc(r['인식 횟수']||'-')}</p></div>
+      <details class="kobaco-evidence"><summary>AiSAC 실제 데이터 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-table">${fixedRawRows(c)}</div></div></details>
+    </div>
+  </div></div></div>`;
 }
 </script>
 '''
