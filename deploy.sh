@@ -69,10 +69,11 @@ if [ -f .env ]; then
   fi
 fi
 
-echo "[4/7] Syntax + topic mapping check"
+echo "[4/7] Syntax + topic + tutor integration check"
 .venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py migrate_db.py
 .venv/bin/python - <<'PY'
 import literacy_kobaco_app_10 as m
+
 expected = {
     'news': 'kobaco_aisac_',
     'deepfake': 'kobaco_publicad_',
@@ -86,7 +87,38 @@ for lesson_id, prefix in expected.items():
         raise SystemExit(f"ERROR: {lesson_id} has fewer than 3 cases")
     if not all(x.startswith(prefix) for x in ids):
         raise SystemExit(f"ERROR: {lesson_id} contains wrong case type: {ids}")
-print('TOPIC MAPPING OK')
+
+payload = m._topic_payload()
+for lesson_id in expected:
+    if len(payload.get(lesson_id, [])) < 3:
+        raise SystemExit(f"ERROR: {lesson_id} payload missing")
+
+page = m._render_index_kobaco_v10()
+required_page_markers = (
+    'fixedTopicCases',
+    'AI가 읽은 광고',
+    '청소년·OTT 통계',
+    'kobaco_aisac_',
+    'kobaco_publicad_',
+    'kobaco_ott_',
+    '실제 조사 원자료 항목 보기',
+)
+for marker in required_page_markers:
+    if marker not in page:
+        raise SystemExit(f"ERROR: root UI marker missing: {marker}")
+
+if not hasattr(m, 'kobaco_ai_chat_stream'):
+    raise SystemExit('ERROR: adaptive AI tutor route missing')
+if hasattr(m, 'kobaco_instant_chat_stream'):
+    raise SystemExit('ERROR: old canned instant tutor route is still exposed')
+
+source = open('literacy_kobaco_app_10.py', encoding='utf-8').read()
+if 'def _lesson_reply(' in source:
+    raise SystemExit('ERROR: old canned lesson reply function still present')
+if '첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다' not in source:
+    raise SystemExit('ERROR: public-ad pedagogy guard missing')
+
+print('TOPIC MAPPING + UI + ADAPTIVE TUTOR OK')
 PY
 
 echo "[5/7] Database migration"
@@ -104,18 +136,25 @@ systemctl enable aioff >/dev/null
 systemctl restart aioff
 sleep 2
 
-echo "[7/7] Health + v10 routing check"
+echo "[7/7] Health + live routing check"
 curl -fsS http://127.0.0.1:3000/health
 echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-grep -q 'fixedTopicCases' /tmp/aioff_root.html
-grep -q '앞 버전들이 lesson-card에 붙인 여러 click listener를 제거합니다' literacy_kobaco_app_10.py
-grep -q 'kobaco_instant_chat_stream' literacy_kobaco_app_10.py
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기'; do
+  if ! grep -q "$marker" /tmp/aioff_root.html; then
+    echo "ERROR: live root marker missing: $marker"
+    exit 1
+  fi
+done
 if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
   echo "ERROR: old forced typography/readability UI still active"
   exit 1
 fi
-echo "ROOT PAGE + TOPIC ROUTING + INSTANT CHAT OK"
+if grep -q 'def _lesson_reply(' literacy_kobaco_app_10.py; then
+  echo "ERROR: canned lesson reply still present"
+  exit 1
+fi
+echo "ROOT PAGE + 3 TOPICS + ADAPTIVE AI TUTOR OK"
 echo "DEPLOY OK"
