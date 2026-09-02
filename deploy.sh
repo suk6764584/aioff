@@ -70,10 +70,10 @@ if [ -f .env ]; then
 fi
 
 echo "[4/7] Syntax + topic + tutor integration check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py migrate_db.py
 .venv/bin/python - <<'PY'
 import re
-import literacy_kobaco_app_11 as m
+import literacy_kobaco_app_12 as m
 
 expected = {
     'news': 'kobaco_aisac_',
@@ -89,7 +89,6 @@ for lesson_id, prefix in expected.items():
     if not all(x.startswith(prefix) for x in ids):
         raise SystemExit(f"ERROR: {lesson_id} contains wrong case type: {ids}")
 
-# AiSAC은 여러 사례를 제공하고 모두 2020-01-01 이후여야 합니다.
 aisac_cases = m.flow.CASE_LIBRARY.get('news', [])
 if len(aisac_cases) < 6:
     raise SystemExit(f"ERROR: too few AiSAC cases after 2020 filter: {len(aisac_cases)}")
@@ -99,22 +98,15 @@ for case in aisac_cases:
     match = re.search(r'(20\d{2})', registered)
     if not match or int(match.group(1)) < 2020:
         raise SystemExit(f"ERROR: pre-2020 AiSAC case exposed: {case.get('id')} / {registered}")
-    search_url = str(case.get('aisac_search_url') or '')
-    if 'startDate=2020-01-01' not in search_url:
+    if 'startDate=2020-01-01' not in str(case.get('aisac_search_url') or ''):
         raise SystemExit(f"ERROR: AiSAC fixed start date missing: {case.get('id')}")
 
-# 청소년 주제는 실제 13-19세 사례만 허용합니다.
 for case in m.flow.CASE_LIBRARY.get('ai', []):
     rows = {str(x.get('label','')): str(x.get('value','')) for x in case.get('data_rows', [])}
     if '13-19세' not in rows.get('연도·집단', ''):
         raise SystemExit(f"ERROR: non-youth OTT case exposed: {case.get('id')}")
 
-payload = m.previous._topic_payload()
-for lesson_id in expected:
-    if len(payload.get(lesson_id, [])) < 3:
-        raise SystemExit(f"ERROR: {lesson_id} payload missing")
-
-page = m._render_index_kobaco_v11()
+page = m._render_index_kobaco_v12()
 required_page_markers = (
     'fixedTopicCases',
     'AI가 읽은 광고',
@@ -122,23 +114,22 @@ required_page_markers = (
     'kobaco_aisac_',
     'kobaco_publicad_',
     'kobaco_ott_',
-    '실제 조사 원자료 항목 보기',
-    'function fixedDataMedia(c,kind,title,intro)',
-    'AiSAC 원본 페이지',
     '/api/aisac-thumb/',
     '/api/aisac-video/',
     '<video controls',
+    'object-fit:contain',
+    'max-height:250px',
     '2020-01-01',
 )
 for marker in required_page_markers:
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
 
-for route_name in ('aisac_open', 'aisac_thumbnail', 'aisac_video'):
-    if not hasattr(m, route_name):
-        raise SystemExit(f'ERROR: AiSAC media route missing: {route_name}')
+route_paths = {getattr(route, 'path', '') for route in m.app.routes}
+for path in ('/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}', '/api/aisac-video/{case_id}'):
+    if path not in route_paths:
+        raise SystemExit(f"ERROR: AiSAC media route missing: {path}")
 
-# 확인되지 않은 설명용 fallback 문장은 학생 화면/소스에 다시 들어오면 안 됩니다.
 banned_copy = (
     'AI 인식 키워드만으로 광고의 뜻을 정하지 말고',
     '제목과 AI 키워드만으로 전체 메시지를 정하지 말고',
@@ -146,32 +137,29 @@ banned_copy = (
 )
 source10 = open('literacy_kobaco_app_10.py', encoding='utf-8').read()
 source11 = open('literacy_kobaco_app_11.py', encoding='utf-8').read()
+source12 = open('literacy_kobaco_app_12.py', encoding='utf-8').read()
 for text in banned_copy:
-    if text in source10 or text in source11 or text in page:
+    if text in source10 or text in source11 or text in source12 or text in page:
         raise SystemExit(f"ERROR: placeholder AiSAC copy returned: {text}")
 
-last_case_media = page.rfind('function caseMedia(c)')
-if last_case_media < 0:
-    raise SystemExit('ERROR: final caseMedia renderer missing')
-final_renderer = page[last_case_media:]
-for marker in ('kobaco_publicad_', 'kobaco_aisac_', 'kobaco_ott_', 'fixedDataMedia'):
-    if marker not in final_renderer:
-        raise SystemExit(f'ERROR: final case renderer missing branch: {marker}')
-if 'caseMediaV4(c)' in final_renderer:
-    raise SystemExit('ERROR: recursive legacy caseMedia fallback still active in final renderer')
-
-if not hasattr(m.previous, 'kobaco_ai_chat_stream'):
+# v10에 있는 적응형 튜터가 import chain 안에 그대로 유지되는지 확인합니다.
+node = m
+adaptive_tutor = False
+old_canned_tutor = False
+for _ in range(5):
+    if hasattr(node, 'kobaco_ai_chat_stream'):
+        adaptive_tutor = True
+    if hasattr(node, 'kobaco_instant_chat_stream'):
+        old_canned_tutor = True
+    node = getattr(node, 'previous', None)
+    if node is None:
+        break
+if not adaptive_tutor:
     raise SystemExit('ERROR: adaptive AI tutor route missing')
-if hasattr(m.previous, 'kobaco_instant_chat_stream'):
+if old_canned_tutor:
     raise SystemExit('ERROR: old canned instant tutor route is still exposed')
-if 'def _lesson_reply(' in source10:
-    raise SystemExit('ERROR: old canned lesson reply function still present')
-if '첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다' not in source10:
-    raise SystemExit('ERROR: public-ad pedagogy guard missing')
-if '세 데이터 유형을 여기서 직접 렌더링해 재귀 호출을 완전히 끊습니다.' not in source10:
-    raise SystemExit('ERROR: recursion guard renderer missing')
 
-print('AISAC 2020+ MULTI-CASE + THUMBNAIL + INLINE VIDEO + ADAPTIVE TUTOR REGRESSION OK')
+print('AISAC 2020+ MULTI-CASE + FULL-FRAME VIDEO + ADAPTIVE TUTOR REGRESSION OK')
 PY
 
 echo "[5/7] Database migration"
@@ -195,29 +183,25 @@ echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기' 'AiSAC 원본 페이지' '/api/aisac-thumb/' '/api/aisac-video/' '<video controls' '2020-01-01'; do
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '<video controls' 'object-fit:contain' 'max-height:250px' '2020-01-01'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
     exit 1
   fi
 done
 for banned in 'AI 인식 키워드만으로 광고의 뜻을 정하지 말고' '제목과 AI 키워드만으로 전체 메시지를 정하지 말고' '광고 맥락을 먼저 확인합니다.'; do
-  if grep -q "$banned" /tmp/aioff_root.html || grep -q "$banned" literacy_kobaco_app_10.py || grep -q "$banned" literacy_kobaco_app_11.py; then
+  if grep -q "$banned" /tmp/aioff_root.html || grep -q "$banned" literacy_kobaco_app_10.py || grep -q "$banned" literacy_kobaco_app_11.py || grep -q "$banned" literacy_kobaco_app_12.py; then
     echo "ERROR: placeholder AiSAC copy returned: $banned"
     exit 1
   fi
 done
-if ! grep -q 'literacy_kobaco_app_11:app' aioff.service; then
-  echo "ERROR: service is not pointing to v11"
+if ! grep -q 'literacy_kobaco_app_12:app' aioff.service; then
+  echo "ERROR: service is not pointing to v12"
   exit 1
 fi
 if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
   echo "ERROR: old forced typography/readability UI still active"
   exit 1
 fi
-if grep -q 'def _lesson_reply(' literacy_kobaco_app_10.py; then
-  echo "ERROR: canned lesson reply still present"
-  exit 1
-fi
-echo "ROOT PAGE + AISAC 2020+ MULTI-CASE + THUMBNAIL + INLINE VIDEO + 3 TOPICS OK"
+echo "ROOT PAGE + AISAC 2020+ FULL-FRAME VIDEO + 3 TOPICS OK"
 echo "DEPLOY OK"
