@@ -7,12 +7,12 @@ from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 import literacy_kobaco_app_10 as previous
 
 # v10의 공익광고/OTT/AI 튜터는 그대로 유지하고,
-# AiSAC 사례만 2020-01-01 이후로 고정하며 원본 광고 상세페이지까지 바로 엽니다.
+# AiSAC 사례만 2020-01-01 이후로 고정하며 실제 썸네일/영상을 학생 화면에 표시합니다.
 app = previous.app
 base = previous.base
 flow = previous.flow
@@ -161,17 +161,53 @@ _DETAIL_PATTERNS = (
     re.compile(rf"advId(?:=|%3D|\s*[:=]\s*[\"']?)({_UUID})", re.I),
     re.compile(rf"(?:view|detail|goView|fnView|moveView)[^(]*\([^)]*[\"']({_UUID})[\"']", re.I),
 )
-_AISAC_DETAIL_CACHE: dict[str, str] = {}
+_IMG_PATTERNS = (
+    re.compile(r'<meta[^>]+(?:property|name)=["\'](?:og:image|twitter:image|twitter:image:src)["\'][^>]+content=["\']([^"\']+)', re.I),
+    re.compile(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\'](?:og:image|twitter:image|twitter:image:src)["\']', re.I),
+    re.compile(r'<video[^>]+poster=["\']([^"\']+)', re.I),
+    re.compile(r'<img[^>]+(?:src|data-src)=["\']([^"\']+)', re.I),
+)
+_VIDEO_PATTERNS = (
+    re.compile(r'<source[^>]+src=["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
+    re.compile(r'<video[^>]+src=["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
+    re.compile(r'["\'](?:file|src|videoUrl|video_url|movieUrl|movie_url)["\']\s*[:=]\s*["\']([^"\']+\.(?:mp4|webm)(?:\?[^"\']*)?)["\']', re.I),
+    re.compile(r'(https?://[^"\'\s<>]+\.(?:mp4|webm)(?:\?[^"\'\s<>]*)?)', re.I),
+)
+_AISAC_ASSET_CACHE: dict[str, dict[str, str]] = {}
+
+
+def _clean_asset_url(value: str, base_url: str) -> str:
+    raw = html.unescape(str(value or "").strip()).replace("\\/", "/")
+    if not raw or raw.startswith("data:") or raw.startswith("javascript:"):
+        return ""
+    if raw.startswith("//"):
+        return "https:" + raw
+    return urljoin(base_url, raw)
+
+
+def _fetch_html(url: str, limit: int = 3_000_000) -> str:
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36",
+            "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
+        },
+    )
+    with urlopen(request, timeout=8) as response:
+        raw = response.read(limit)
+    return raw.decode("utf-8", errors="ignore")
+
+
+def _title_areas(page: str, title: str, radius: int = 6000) -> list[str]:
+    text = html.unescape(page or "")
+    positions = [m.start() for m in re.finditer(re.escape(title), text, re.I)] if title else []
+    areas = [text[max(0, pos - radius): pos + radius] for pos in positions[:5]]
+    areas.append(text)
+    return areas
 
 
 def _extract_adv_id(page: str, title: str) -> str:
-    text = html.unescape(page or "")
-    positions = [m.start() for m in re.finditer(re.escape(title), text, re.I)] if title else []
-    areas = []
-    for pos in positions[:5]:
-        areas.append(text[max(0, pos - 4500): pos + 4500])
-    areas.append(text)
-    for area in areas:
+    for area in _title_areas(page, title):
         for pattern in _DETAIL_PATTERNS:
             match = pattern.search(area)
             if match:
@@ -179,47 +215,92 @@ def _extract_adv_id(page: str, title: str) -> str:
     return ""
 
 
-def _resolve_aisac_detail(case) -> str:
+def _extract_image(page: str, base_url: str, title: str = "") -> str:
+    for area in _title_areas(page, title) if title else [page]:
+        for pattern in _IMG_PATTERNS:
+            for match in pattern.finditer(area):
+                candidate = _clean_asset_url(match.group(1), base_url)
+                low = candidate.lower()
+                if candidate and not any(x in low for x in ("logo", "icon", "favicon", "spinner", "loading")):
+                    return candidate
+    return ""
+
+
+def _extract_video(page: str, base_url: str) -> str:
+    text = html.unescape(page or "").replace("\\/", "/")
+    for pattern in _VIDEO_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return _clean_asset_url(match.group(1), base_url)
+    return ""
+
+
+def _resolve_aisac_assets(case) -> dict[str, str]:
     case_id = str(case.get("id") or "")
-    if case_id in _AISAC_DETAIL_CACHE:
-        return _AISAC_DETAIL_CACHE[case_id]
+    if case_id in _AISAC_ASSET_CACHE:
+        return _AISAC_ASSET_CACHE[case_id]
 
     title = str(case.get("title") or "").strip()
     search_url = str(case.get("aisac_search_url") or _aisac_search_url(title))
+    assets = {"detail": "", "thumb": "", "video": ""}
     try:
-        request = Request(
-            search_url,
-            headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/152 Safari/537.36",
-                "Accept-Language": "ko-KR,ko;q=0.9,en;q=0.5",
-            },
-        )
-        with urlopen(request, timeout=8) as response:
-            raw = response.read(2_500_000)
-        page = raw.decode("utf-8", errors="ignore")
-        adv_id = _extract_adv_id(page, title)
+        search_page = _fetch_html(search_url)
+        assets["thumb"] = _extract_image(search_page, search_url, title)
+        adv_id = _extract_adv_id(search_page, title)
         if adv_id:
-            detail = AISAC_DETAIL_BASE + adv_id
-            _AISAC_DETAIL_CACHE[case_id] = detail
-            return detail
+            detail_url = AISAC_DETAIL_BASE + adv_id
+            assets["detail"] = detail_url
+            detail_page = _fetch_html(detail_url)
+            assets["video"] = _extract_video(detail_page, detail_url)
+            detail_thumb = _extract_image(detail_page, detail_url)
+            if detail_thumb:
+                assets["thumb"] = detail_thumb
     except Exception as exc:
-        base.core.logger.warning("AiSAC detail resolve failed for %s: %s", case_id, type(exc).__name__)
+        base.core.logger.warning("AiSAC asset resolve failed for %s: %s", case_id, type(exc).__name__)
 
-    _AISAC_DETAIL_CACHE[case_id] = ""
-    return ""
+    _AISAC_ASSET_CACHE[case_id] = assets
+    return assets
+
+
+def _aisac_case(case_id: str):
+    found = flow.CASE_BY_ID.get(case_id)
+    if not found or found[0] != "news" or not case_id.startswith("kobaco_aisac_"):
+        raise HTTPException(404, "AiSAC 사례를 찾을 수 없습니다.")
+    return found[1]
 
 
 @app.get("/api/aisac-open/{case_id}")
 def aisac_open(case_id: str):
-    found = flow.CASE_BY_ID.get(case_id)
-    if not found or found[0] != "news" or not case_id.startswith("kobaco_aisac_"):
-        raise HTTPException(404, "AiSAC 사례를 찾을 수 없습니다.")
-    case = found[1]
-    detail = _resolve_aisac_detail(case)
-    if detail:
-        return RedirectResponse(detail, status_code=302)
-    # AiSAC 페이지 구조가 바뀌어 상세 ID를 추출하지 못한 경우에만 고정 기간 검색으로 이동합니다.
+    case = _aisac_case(case_id)
+    assets = _resolve_aisac_assets(case)
+    if assets["detail"]:
+        return RedirectResponse(assets["detail"], status_code=302)
     return RedirectResponse(str(case.get("aisac_search_url") or _aisac_search_url(case.get("title", ""))), status_code=302)
+
+
+@app.get("/api/aisac-thumb/{case_id}")
+def aisac_thumbnail(case_id: str):
+    case = _aisac_case(case_id)
+    assets = _resolve_aisac_assets(case)
+    if assets["thumb"]:
+        return RedirectResponse(assets["thumb"], status_code=302)
+    title = html.escape(str(case.get("title") or "KOBACO AiSAC 광고"))
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+    <rect width="1280" height="720" fill="#25211d"/>
+    <text x="72" y="92" fill="#f1a47b" font-family="Arial,sans-serif" font-size="24" font-weight="700">KOBACO AiSAC</text>
+    <foreignObject x="72" y="185" width="1120" height="300"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;color:white;font-size:50px;font-weight:800;line-height:1.25">{title}</div></foreignObject>
+    <circle cx="112" cy="610" r="34" fill="#ee7440"/><polygon points="103,590 103,630 132,610" fill="white"/>
+    </svg>'''
+    return Response(svg.encode("utf-8"), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=1800"})
+
+
+@app.get("/api/aisac-video/{case_id}")
+def aisac_video(case_id: str):
+    case = _aisac_case(case_id)
+    assets = _resolve_aisac_assets(case)
+    if not assets["video"]:
+        return Response(status_code=404)
+    return RedirectResponse(assets["video"], status_code=302)
 
 
 def _render_index_kobaco_v11():
@@ -227,20 +308,32 @@ def _render_index_kobaco_v11():
     patch = r'''
 <style>
 .fact-grid{grid-template-columns:1.45fr .8fr 1fr .85fr}
-@media(max-width:650px){.fact-grid{grid-template-columns:1fr}}
+.aisac-video-stage{position:relative;background:#171513;border-bottom:1px solid #ded5ca;aspect-ratio:16/9;overflow:hidden}.aisac-video-stage video{width:100%;height:100%;display:block;object-fit:contain;background:#111}.aisac-video-stage video::cue{font-size:14px}.aisac-card-title{padding:11px 15px;background:#fff;border-bottom:1px solid #e2dbd1;font-size:12px;font-weight:900;line-height:1.45}.aisac-picker-media{height:86px;margin:-10px -10px 9px;overflow:hidden;border-radius:7px 7px 4px 4px;background:#26211d}.aisac-picker-media img{width:100%;height:100%;object-fit:cover;display:block}
+@media(max-width:650px){.fact-grid{grid-template-columns:1fr}.aisac-video-stage{aspect-ratio:16/9}.aisac-picker-media{height:72px}}
 </style>
 <script>
+function fixedPreview(c){
+  const id=String(c.id||'');
+  if(id.startsWith('kobaco_publicad_')) return `<div class="kobaco-picker-media"><img src="/api/kobaco-media-thumb/${encodeURIComponent(c.id)}" alt="공익광고 썸네일" loading="lazy"></div>`;
+  if(id.startsWith('kobaco_aisac_')) return `<div class="aisac-picker-media"><img src="/api/aisac-thumb/${encodeURIComponent(c.id)}" alt="${esc(c.title||'AiSAC 광고')} 썸네일" loading="lazy"></div>`;
+  if(id.startsWith('kobaco_ott_')) return `<div class="topic-preview ott"><b>청소년·OTT 통계</b><span>13-19세 조사 조건과 이용률</span></div>`;
+  return '';
+}
 function aisacSearchUrl(c){
   return c.aisac_search_url || `https://aisac.kobaco.co.kr/site/main/advideo/list_all_top?kwdVal=${encodeURIComponent(c.title||'')}&listType=list&pageSize=12&startDate=2020-01-01&endDate=${new Date().toISOString().slice(0,10)}&sortDirection=DESC&sortOrder=ADV_LIKE`;
 }
 function aisacLearningCard(c){
   const r=fixedRows(c);
   const direct=`/api/aisac-open/${encodeURIComponent(c.id)}`;
+  const video=`/api/aisac-video/${encodeURIComponent(c.id)}`;
+  const thumb=`/api/aisac-thumb/${encodeURIComponent(c.id)}`;
   const search=aisacSearchUrl(c);
   const related=c.context_url?`<a class="alt" href="${esc(c.context_url)}" target="_blank" rel="noopener">${esc(c.context_label||'관련 자료 보기')} ↗</a>`:'';
   const verified=c.context_summary?`<div class="verified-context"><small>관련 자료에서 확인되는 내용</small><p>${esc(c.context_summary)}</p></div>`:'';
   return `<div class="chat-case-media"><div class="kobaco-data-card">
-    <div class="context-card"><b>AiSAC 광고 원본</b><p>검색 기간 ${esc(c.aisac_start_date||'2020-01-01')} ~ ${esc(c.aisac_end_date||'')} · 사례도 같은 기간의 광고만 사용합니다.</p><div class="context-actions"><a href="${direct}" target="_blank" rel="noopener">원본 광고 바로 보기 ↗</a><a class="alt" href="${esc(search)}" target="_blank" rel="noopener">검색 결과 확인 ↗</a>${related}</div></div>
+    <div class="aisac-video-stage"><video controls preload="metadata" poster="${thumb}"><source src="${video}" type="video/mp4"></video></div>
+    <div class="aisac-card-title">${esc(c.title||'-')}</div>
+    <div class="context-card"><div class="context-actions"><a href="${direct}" target="_blank" rel="noopener">AiSAC 원본 페이지 ↗</a><a class="alt" href="${esc(search)}" target="_blank" rel="noopener">검색 결과 ↗</a>${related}</div></div>
     <div class="fact-grid"><div><small>광고명</small><b>${esc(c.title||'-')}</b></div><div><small>등록일</small><b>${esc(r['등록일']||c.registration_date||'-')}</b></div><div><small>광고주</small><b>${esc(r['광고주']||'-')}</b></div><div><small>업종</small><b>${esc(r['업종']||'-')}</b></div></div>
     ${verified}
     <div class="aisac-result"><small>AiSAC이 인식한 키워드</small><strong>${esc(r['키워드']||'-')}</strong><p>${esc(r['인식 횟수']||'-')}</p></div>
