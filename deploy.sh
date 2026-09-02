@@ -69,8 +69,25 @@ if [ -f .env ]; then
   fi
 fi
 
-echo "[4/7] Syntax check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py migrate_db.py
+echo "[4/7] Syntax + topic mapping check"
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py migrate_db.py
+.venv/bin/python - <<'PY'
+import literacy_kobaco_app_10 as m
+expected = {
+    'news': 'kobaco_aisac_',
+    'deepfake': 'kobaco_publicad_',
+    'ai': 'kobaco_ott_',
+}
+for lesson_id, prefix in expected.items():
+    cases = m.flow.CASE_LIBRARY.get(lesson_id, [])
+    ids = [str(c.get('id','')) for c in cases]
+    print(f"{lesson_id}: {len(ids)} cases")
+    if len(ids) < 3:
+        raise SystemExit(f"ERROR: {lesson_id} has fewer than 3 cases")
+    if not all(x.startswith(prefix) for x in ids):
+        raise SystemExit(f"ERROR: {lesson_id} contains wrong case type: {ids}")
+print('TOPIC MAPPING OK')
+PY
 
 echo "[5/7] Database migration"
 .venv/bin/python migrate_db.py
@@ -87,15 +104,18 @@ systemctl enable aioff >/dev/null
 systemctl restart aioff
 sleep 2
 
-echo "[7/7] Health + optimized KOBACO lesson check"
+echo "[7/7] Health + v10 routing check"
 curl -fsS http://127.0.0.1:3000/health
 echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-grep -q 'kid-stat-grid' /tmp/aioff_root.html
-grep -q '_instant_reply' literacy_kobaco_app_9.py
-grep -q 'used_master_keys' literacy_kobaco_app_9.py
-grep -q 'v4._page_image = lambda' literacy_kobaco_app_9.py
-echo "ROOT PAGE + FAST UNIQUE CASES OK"
+grep -q 'fixedTopicCases' /tmp/aioff_root.html
+grep -q '앞 버전들이 lesson-card에 붙인 여러 click listener를 제거합니다' literacy_kobaco_app_10.py
+grep -q 'kobaco_instant_chat_stream' literacy_kobaco_app_10.py
+if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
+  echo "ERROR: old forced typography/readability UI still active"
+  exit 1
+fi
+echo "ROOT PAGE + TOPIC ROUTING + INSTANT CHAT OK"
 echo "DEPLOY OK"
