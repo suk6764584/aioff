@@ -8,4 +8,5 @@ __pycache__/
 uvicorn*.log
 _upload_*/
 *.zip
+raw_data/
 .DS_Store
