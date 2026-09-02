@@ -242,15 +242,15 @@ def _render_index_kobaco_v13():
 </style>
 <script>
 /* 기존 public-ad/OTT 미리보기는 그대로 두고 AiSAC만 실제 영상 첫 프레임으로 교체합니다. */
-const fixedPreviewBeforeV13=fixedPreview;
-function fixedPreview(c){
+const fixedPreviewBeforeV13=window.fixedPreview;
+window.fixedPreview=function(c){
   const id=String(c?.id||'');
   if(id.startsWith('kobaco_aisac_')){
     const cid=encodeURIComponent(c.id);
     return `<div class="aisac-picker-media"><video class="aisac-picker-video" muted playsinline preload="auto" src="/api/aisac-video/${cid}#t=0.1" onloadedmetadata="try{if(this.duration>0){this.currentTime=Math.min(.1,this.duration/2)}}catch(e){}"></video><span>AI가 읽은 광고</span></div>`;
   }
   return fixedPreviewBeforeV13(c);
-}
+};
 
 function aisacLearningCard(c){
   const r=fixedRows(c);
