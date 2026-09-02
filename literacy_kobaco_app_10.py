@@ -314,6 +314,10 @@ def _render_index_kobaco_v10():
 .kobaco-topic-preview span{font-size:8px;line-height:1.35;color:rgba(255,255,255,.7)}
 .kobaco-topic-preview.aisac{background:linear-gradient(135deg,#29313d,#3e536b)}
 .kobaco-topic-preview.ott{background:linear-gradient(135deg,#35302b,#665448)}
+.kobaco-fixed-data{width:100%;background:#fff}
+.kobaco-fixed-head{padding:15px 16px 11px;border-bottom:1px solid #e2dbd1;background:#f8f5ef}
+.kobaco-fixed-head small{display:block;font-size:9px;font-weight:900;color:#74695f;margin-bottom:5px}.kobaco-fixed-head strong{display:block;font-size:16px;line-height:1.4;color:#27231f}
+.kobaco-fixed-intro{padding:12px 16px;font-size:11px;line-height:1.6;color:#625a52;border-bottom:1px solid #e6dfd5}
 @media(max-width:650px){.kobaco-readable-metrics{grid-template-columns:1fr}.kobaco-topic-preview{height:72px}}
 '''
     page = page.replace("</style>", extra_css + "\n</style>")
@@ -334,7 +338,7 @@ function fixedSample(lessonId){{
 }}
 function fixedPreview(c){{
   const id=String(c.id||'');
-  if(id.startsWith('kobaco_publicad_') && typeof kobacoPickerPreview==='function') return kobacoPickerPreview(c);
+  if(id.startsWith('kobaco_publicad_')) return `<div class="kobaco-picker-media"><img src="/api/kobaco-media-thumb/${{encodeURIComponent(c.id)}}" alt="${{esc(c.title||'공익광고')}} 썸네일" loading="lazy"></div>`;
   if(id.startsWith('kobaco_aisac_')) return `<div class="kobaco-topic-preview aisac"><b>AI가 읽은 광고</b><span>AiSAC 인식값과 사람의 해석을 구분합니다.</span></div>`;
   if(id.startsWith('kobaco_ott_')) return `<div class="kobaco-topic-preview ott"><b>청소년·OTT 통계</b><span>이용률과 선호도를 구분하고 조사 조건을 확인합니다.</span></div>`;
   return '';
@@ -364,32 +368,57 @@ function showCaseChooser(lessonId){{
   input.placeholder='위에서 사례를 먼저 선택해 주세요.';stageText.textContent='사례를 선택하세요';chat.scrollTop=0;
 }}
 
+function fixedRows(c){{
+  const out={{}};
+  (c.data_rows||[]).forEach(r=>{{out[String(r.label||'').trim()]=String(r.value||'').trim();}});
+  return out;
+}}
+function fixedRawRows(c){{
+  return (c.data_rows||[]).map(r=>`<div class="kobaco-data-row"><b>${{esc(r.label||'항목')}}</b><span>${{esc(r.value||'-')}}</span></div>`).join('');
+}}
+function fixedDataMedia(c,kind,title,intro){{
+  const tables=(c.db_tables||[]).map(x=>esc(x)).join(' · ');
+  return `<div class="chat-case-media"><div class="kobaco-fixed-data"><div class="kobaco-fixed-head"><small>${{esc(kind)}}</small><strong>${{esc(title)}}</strong></div><div class="kobaco-fixed-intro">${{esc(intro)}}</div><div class="kobaco-data-body"><div class="kobaco-data-kicker">KOBACO 실제 데이터 · ${{tables}}</div><div class="kobaco-data-table">${{fixedRawRows(c)}}</div><div class="kobaco-data-note">${{esc(c.data_note||'KOBACO 실제 데이터 조회값')}}</div></div></div></div>`;
+}}
+function fixedArchiveButton(c){{
+  const url=c.archive_url||c.source_url||'';
+  if(!url)return '';
+  return `<a class="kobaco-ad-action" href="${{esc(url)}}" target="_blank" rel="noopener">공식 상세페이지 ↗</a>`;
+}}
+function fixedVideoButton(c){{
+  return `<a class="kobaco-ad-action video" href="/api/kobaco-video/${{encodeURIComponent(c.id)}}" target="_blank" rel="noopener">▶ 광고 영상 보기</a>`;
+}}
 function kobacoPublicLearningCard(c){{
-  const rowsMap=kobacoRows(c);
+  const rowsMap=fixedRows(c);
   const trust=rowsMap['신뢰성']||'-';
   const channel=rowsMap['주요 인지경로']||'-';
   const impact=rowsMap['임팩트 1위']||'-';
-  const tables=(c.db_tables||[]).map(x=>kobacoEsc(x)).join(' · ');
-  const rawRows=(c.data_rows||[]).map(r=>`<div class="kobaco-data-row"><b>${{kobacoEsc(r.label||'항목')}}</b><span>${{kobacoEsc(r.value||'-')}}</span></div>`).join('');
-  const metric=(label,value,meaning)=>`<div class="kobaco-readable-metric"><small>${{kobacoEsc(label)}}</small><strong>${{kobacoEsc(value)}}</strong><p>${{kobacoEsc(meaning)}}</p></div>`;
+  const tables=(c.db_tables||[]).map(x=>esc(x)).join(' · ');
+  const metric=(label,value,meaning)=>`<div class="kobaco-readable-metric"><small>${{esc(label)}}</small><strong>${{esc(value)}}</strong><p>${{esc(meaning)}}</p></div>`;
 
   return `<div class="chat-case-media"><div class="kobaco-data-card">
-    <div class="kobaco-thumb-stage"><img src="/api/kobaco-media-thumb/${{encodeURIComponent(c.id)}}" alt="${{kobacoEsc(c.archive_title||c.title)}} 광고 영상 썸네일" loading="eager"><div class="kobaco-thumb-copy"><div class="kobaco-thumb-kicker">KOBACO 공익광고</div><div class="kobaco-thumb-title">${{kobacoEsc(c.archive_title||String(c.title||'').split(' · ')[0])}}</div><div class="kobaco-thumb-meta">${{kobacoEsc([c.archive_year,c.archive_category].filter(Boolean).join(' · '))}}</div></div></div>
-    <div class="kobaco-ad-actions">${{kobacoArchiveButton(c)}}${{kobacoVideoButton(c)}}</div>
+    <div class="kobaco-thumb-stage"><img src="/api/kobaco-media-thumb/${{encodeURIComponent(c.id)}}" alt="${{esc(c.archive_title||c.title)}} 광고 영상 썸네일" loading="eager"><div class="kobaco-thumb-copy"><div class="kobaco-thumb-kicker">KOBACO 공익광고</div><div class="kobaco-thumb-title">${{esc(c.archive_title||String(c.title||'').split(' · ')[0])}}</div><div class="kobaco-thumb-meta">${{esc([c.archive_year,c.archive_category].filter(Boolean).join(' · '))}}</div></div></div>
+    <div class="kobaco-ad-actions">${{fixedArchiveButton(c)}}${{fixedVideoButton(c)}}</div>
     <div class="kobaco-learn-step"><b><span class="kobaco-step-no">1</span>광고를 보고 내 해석 만들기</b><p>광고가 무엇을 말한다고 느꼈는지 적고, 그렇게 느낀 장면이나 문구를 하나 근거로 골라보세요. 이 단계의 내 해석은 조사 결과와 구분합니다.</p></div>
     <div class="kobaco-data-lock"><b>첫 답변 뒤 실제 조사 자료가 열립니다.</b> 숫자를 맞히는 문제가 아니라, 내가 본 내용과 조사에서 측정한 내용을 비교하는 학습입니다.</div>
     <div class="kobaco-after-answer" data-kobaco-after-answer>
       <div class="kobaco-reveal-note">첫 판단 완료 · 실제 KOBACO 효과평가와 비교합니다.</div>
       <div class="kobaco-why"><b>왜 이 자료를 보나요?</b>같은 광고라도 ‘믿을 만했는지’, ‘어디에서 봤는지’, ‘무엇이 가장 기억에 남았는지’는 서로 다른 질문입니다. 숫자를 보기 전에 무엇을 측정한 값인지부터 구분합니다.</div>
-      <div class="kobaco-readable-metrics">
-        ${{metric('광고의 신뢰성을 평가한 항목',trust,'광고를 믿을 만하다고 평가한 조사 항목입니다. 행동이 바뀐 사람의 비율이라는 뜻은 아닙니다.')}}
-        ${{metric('광고를 접한 경로 중 가장 높은 항목',channel,'어디에서 광고를 접했는지를 나타냅니다. 광고의 좋고 나쁨을 평가한 점수가 아닙니다.')}}
-        ${{metric('가장 강한 인상을 준 요소',impact,'기억에 남은 요소를 묻는 조사 항목입니다. 광고 전체 효과를 하나의 숫자로 나타낸 값이 아닙니다.')}}
-      </div>
-      <details class="kobaco-evidence" open><summary>실제 조사 원자료 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-kicker">KOBACO 데이터 · ${{tables}}</div><div class="kobaco-data-table">${{rawRows}}</div><div class="kobaco-data-note">${{kobacoEsc(c.data_note||'KOBACO 실제 데이터 조회값')}}</div></div></details>
+      <div class="kobaco-readable-metrics">${{metric('광고의 신뢰성을 평가한 항목',trust,'광고를 믿을 만하다고 평가한 조사 항목입니다. 행동이 바뀐 사람의 비율이라는 뜻은 아닙니다.')}}${{metric('광고를 접한 경로 중 가장 높은 항목',channel,'어디에서 광고를 접했는지를 나타냅니다. 광고의 좋고 나쁨을 평가한 점수가 아닙니다.')}}${{metric('가장 강한 인상을 준 요소',impact,'기억에 남은 요소를 묻는 조사 항목입니다. 광고 전체 효과를 하나의 숫자로 나타낸 값이 아닙니다.')}}</div>
+      <details class="kobaco-evidence" open><summary>실제 조사 원자료 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-kicker">KOBACO 데이터 · ${{tables}}</div><div class="kobaco-data-table">${{fixedRawRows(c)}}</div><div class="kobaco-data-note">${{esc(c.data_note||'KOBACO 실제 데이터 조회값')}}</div></div></details>
       <div class="kobaco-learn-step"><b><span class="kobaco-step-no">3</span>자료가 말하는 사실과 내 해석 나누기</b><p>AI와 대화하면서 조사값이 직접 말해주는 범위와 내가 광고에서 해석한 의미를 나눠봅니다. 마지막에는 같은 기준을 AI 없이 직접 적용합니다.</p></div>
     </div>
   </div></div>`;
+}}
+
+// 이전 v5의 caseMedia는 비공익광고에서 자기 자신을 다시 호출할 수 있었습니다.
+// 세 데이터 유형을 여기서 직접 렌더링해 재귀 호출을 완전히 끊습니다.
+function caseMedia(c){{
+  const id=String(c?.id||'');
+  if(id.startsWith('kobaco_publicad_'))return kobacoPublicLearningCard(c);
+  if(id.startsWith('kobaco_aisac_'))return fixedDataMedia(c,'AI가 읽은 광고',c.title||'AiSAC 광고 인식','AI가 광고에서 인식한 키워드·사물·장소는 관찰값입니다. 이 값과 사람이 이해한 광고의 의미를 구분해봅니다.');
+  if(id.startsWith('kobaco_ott_'))return fixedDataMedia(c,'청소년·OTT 통계',c.title||'연령별 OTT 이용','이 표는 특정 연도와 연령집단의 이용 비율을 보여줍니다. 이용률을 선호도나 전체 청소년의 성향으로 바꾸어 말하지 않는 법을 연습합니다.');
+  return fixedDataMedia(c,'KOBACO 실제 자료',c.title||'실제 자료','화면에 표시된 데이터가 직접 말해주는 범위와 추가 해석이 필요한 부분을 구분합니다.');
 }}
 
 const oldCards=[...document.querySelectorAll('.lesson-card')];
