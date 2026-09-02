@@ -70,10 +70,10 @@ if [ -f .env ]; then
 fi
 
 echo "[4/7] Syntax + topic + tutor integration check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py literacy_kobaco_app_13.py migrate_db.py
 .venv/bin/python - <<'PY'
 import re
-import literacy_kobaco_app_12 as m
+import literacy_kobaco_app_13 as m
 
 expected = {
     'news': 'kobaco_aisac_',
@@ -106,7 +106,7 @@ for case in m.flow.CASE_LIBRARY.get('ai', []):
     if '13-19세' not in rows.get('연도·집단', ''):
         raise SystemExit(f"ERROR: non-youth OTT case exposed: {case.get('id')}")
 
-page = m._render_index_kobaco_v12()
+page = m._render_index_kobaco_v13()
 required_page_markers = (
     'fixedTopicCases',
     'AI가 읽은 광고',
@@ -116,8 +116,8 @@ required_page_markers = (
     'kobaco_ott_',
     '/api/aisac-thumb/',
     '/api/aisac-video/',
-    '<video controls',
-    'object-fit:contain',
+    '/api/aisac-player/',
+    'aisac-player-frame',
     'max-height:250px',
     '2020-01-01',
 )
@@ -126,7 +126,7 @@ for marker in required_page_markers:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
-for path in ('/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}', '/api/aisac-video/{case_id}'):
+for path in ('/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}', '/api/aisac-video/{case_id}', '/api/aisac-player/{case_id}'):
     if path not in route_paths:
         raise SystemExit(f"ERROR: AiSAC media route missing: {path}")
 
@@ -135,18 +135,16 @@ banned_copy = (
     '제목과 AI 키워드만으로 전체 메시지를 정하지 말고',
     '광고 맥락을 먼저 확인합니다.',
 )
-source10 = open('literacy_kobaco_app_10.py', encoding='utf-8').read()
-source11 = open('literacy_kobaco_app_11.py', encoding='utf-8').read()
-source12 = open('literacy_kobaco_app_12.py', encoding='utf-8').read()
-for text in banned_copy:
-    if text in source10 or text in source11 or text in source12 or text in page:
-        raise SystemExit(f"ERROR: placeholder AiSAC copy returned: {text}")
+for name in ('literacy_kobaco_app_10.py','literacy_kobaco_app_11.py','literacy_kobaco_app_12.py','literacy_kobaco_app_13.py'):
+    source = open(name, encoding='utf-8').read()
+    for text in banned_copy:
+        if text in source or text in page:
+            raise SystemExit(f"ERROR: placeholder AiSAC copy returned: {text}")
 
-# v10에 있는 적응형 튜터가 import chain 안에 그대로 유지되는지 확인합니다.
 node = m
 adaptive_tutor = False
 old_canned_tutor = False
-for _ in range(5):
+for _ in range(6):
     if hasattr(node, 'kobaco_ai_chat_stream'):
         adaptive_tutor = True
     if hasattr(node, 'kobaco_instant_chat_stream'):
@@ -159,7 +157,7 @@ if not adaptive_tutor:
 if old_canned_tutor:
     raise SystemExit('ERROR: old canned instant tutor route is still exposed')
 
-print('AISAC 2020+ MULTI-CASE + FULL-FRAME VIDEO + ADAPTIVE TUTOR REGRESSION OK')
+print('AISAC 2020+ MULTI-CASE + REAL PLAYER RESOLVER + FULL-FRAME VIDEO OK')
 PY
 
 echo "[5/7] Database migration"
@@ -183,25 +181,19 @@ echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '<video controls' 'object-fit:contain' 'max-height:250px' '2020-01-01'; do
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' 'aisac-player-frame' 'max-height:250px' '2020-01-01'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
     exit 1
   fi
 done
-for banned in 'AI 인식 키워드만으로 광고의 뜻을 정하지 말고' '제목과 AI 키워드만으로 전체 메시지를 정하지 말고' '광고 맥락을 먼저 확인합니다.'; do
-  if grep -q "$banned" /tmp/aioff_root.html || grep -q "$banned" literacy_kobaco_app_10.py || grep -q "$banned" literacy_kobaco_app_11.py || grep -q "$banned" literacy_kobaco_app_12.py; then
-    echo "ERROR: placeholder AiSAC copy returned: $banned"
-    exit 1
-  fi
-done
-if ! grep -q 'literacy_kobaco_app_12:app' aioff.service; then
-  echo "ERROR: service is not pointing to v12"
+if ! grep -q 'literacy_kobaco_app_13:app' aioff.service; then
+  echo "ERROR: service is not pointing to v13"
   exit 1
 fi
 if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
   echo "ERROR: old forced typography/readability UI still active"
   exit 1
 fi
-echo "ROOT PAGE + AISAC 2020+ FULL-FRAME VIDEO + 3 TOPICS OK"
+echo "ROOT PAGE + AISAC REAL PLAYER + FULL-FRAME VIDEO + 3 TOPICS OK"
 echo "DEPLOY OK"
