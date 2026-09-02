@@ -225,11 +225,33 @@ def _render_index_kobaco_v13():
     page = previous._render_index_kobaco_v12()
     patch = r'''
 <style>
+/* 실제 영상 플레이어는 현재 정상 동작을 유지하고, 화면 밀도만 정리합니다. */
 .aisac-player-shell{width:100%;height:clamp(180px,32vh,250px);max-height:250px;background:#171513;overflow:hidden}
 .aisac-player-frame{width:100%;height:100%;display:block;border:0;background:#171513}
-@media(max-width:700px){.aisac-player-shell{height:clamp(160px,29vh,210px);max-height:210px}}
+.aisac-card-title{padding:8px 12px 3px;font-size:11px;font-weight:850;line-height:1.4}
+.aisac-compact-actions{padding:0 12px 8px}.aisac-compact-actions .context-actions{margin-top:4px}
+.aisac-info-column .fact-grid{padding:9px 12px;gap:6px}.aisac-info-column .aisac-result{padding:10px 12px}
+
+/* AiSAC 사례 선택 카드에서는 실제 광고 MP4의 첫 프레임을 미리보기로 사용합니다. */
+.aisac-picker-media{height:82px;margin:-10px -10px 9px;border-radius:7px;overflow:hidden;position:relative;background:#171513}
+.aisac-picker-video{display:block;width:100%;height:100%;object-fit:cover;background:#171513;pointer-events:none}
+.aisac-picker-media span{position:absolute;left:7px;bottom:6px;padding:3px 6px;border-radius:5px;background:rgba(0,0,0,.62);color:#fff;font-size:8px;font-weight:850;pointer-events:none}
+@media(max-width:700px){
+  .aisac-player-shell{height:clamp(160px,29vh,210px);max-height:210px}
+}
 </style>
 <script>
+/* 기존 public-ad/OTT 미리보기는 그대로 두고 AiSAC만 실제 영상 첫 프레임으로 교체합니다. */
+const fixedPreviewBeforeV13=fixedPreview;
+function fixedPreview(c){
+  const id=String(c?.id||'');
+  if(id.startsWith('kobaco_aisac_')){
+    const cid=encodeURIComponent(c.id);
+    return `<div class="aisac-picker-media"><video class="aisac-picker-video" muted playsinline preload="auto" src="/api/aisac-video/${cid}#t=0.1" onloadedmetadata="try{if(this.duration>0){this.currentTime=Math.min(.1,this.duration/2)}}catch(e){}"></video><span>AI가 읽은 광고</span></div>`;
+  }
+  return fixedPreviewBeforeV13(c);
+}
+
 function aisacLearningCard(c){
   const r=fixedRows(c);
   const direct=`/api/aisac-open/${encodeURIComponent(c.id)}`;
