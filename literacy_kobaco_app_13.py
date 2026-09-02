@@ -225,9 +225,10 @@ def _render_index_kobaco_v13():
     page = previous._render_index_kobaco_v12()
     patch = r'''
 <style>
-/* 실제 영상 플레이어는 현재 정상 동작을 유지하고, 화면 밀도만 정리합니다. */
-.aisac-player-shell{width:100%;height:clamp(180px,32vh,250px);max-height:250px;background:#171513;overflow:hidden}
+/* 기능은 그대로 두고 큰 미디어 영역의 세로 높이만 함께 늘립니다. */
+.aisac-player-shell{width:100%;height:clamp(220px,40vh,320px);max-height:320px;background:#171513;overflow:hidden}
 .aisac-player-frame{width:100%;height:100%;display:block;border:0;background:#171513}
+.kobaco-thumb-stage{height:300px!important}
 .aisac-card-title{padding:8px 12px 3px;font-size:11px;font-weight:850;line-height:1.4}
 .aisac-compact-actions{padding:0 12px 8px}.aisac-compact-actions .context-actions{margin-top:4px}
 .aisac-info-column .fact-grid{padding:9px 12px;gap:6px}.aisac-info-column .aisac-result{padding:10px 12px}
@@ -237,7 +238,8 @@ def _render_index_kobaco_v13():
 .aisac-picker-video{display:block;width:100%;height:100%;object-fit:cover;background:#171513;pointer-events:none}
 .aisac-picker-media span{position:absolute;left:7px;bottom:6px;padding:3px 6px;border-radius:5px;background:rgba(0,0,0,.62);color:#fff;font-size:8px;font-weight:850;pointer-events:none}
 @media(max-width:700px){
-  .aisac-player-shell{height:clamp(160px,29vh,210px);max-height:210px}
+  .aisac-player-shell{height:clamp(190px,34vh,250px);max-height:250px}
+  .kobaco-thumb-stage{height:240px!important}
 }
 </style>
 <script>
