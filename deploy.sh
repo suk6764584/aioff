@@ -105,6 +105,8 @@ for case in m.flow.CASE_LIBRARY.get('ai', []):
     rows = {str(x.get('label','')): str(x.get('value','')) for x in case.get('data_rows', [])}
     if '13-19세' not in rows.get('연도·집단', ''):
         raise SystemExit(f"ERROR: non-youth OTT case exposed: {case.get('id')}")
+    if '이용비율 상위' not in rows:
+        raise SystemExit(f"ERROR: OTT usage-rate field missing: {case.get('id')}")
 
 page = m._render_index_kobaco_v13()
 required_page_markers = (
@@ -118,6 +120,8 @@ required_page_markers = (
     '/api/aisac-video/',
     '/api/aisac-player/',
     'aisac-player-frame',
+    'aisac-picker-video',
+    '서비스별 이용 비율입니다. 선호도·만족도',
     'max-height:250px',
     '2020-01-01',
 )
@@ -129,6 +133,9 @@ route_paths = {getattr(route, 'path', '') for route in m.app.routes}
 for path in ('/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}', '/api/aisac-video/{case_id}', '/api/aisac-player/{case_id}'):
     if path not in route_paths:
         raise SystemExit(f"ERROR: AiSAC media route missing: {path}")
+for path in ('/api/chat-stream', '/api/analyze', '/api/off-test', '/api/off-submit'):
+    if path not in route_paths:
+        raise SystemExit(f"ERROR: AI OFF route missing: {path}")
 
 banned_copy = (
     'AI 인식 키워드만으로 광고의 뜻을 정하지 말고',
@@ -157,7 +164,7 @@ if not adaptive_tutor:
 if old_canned_tutor:
     raise SystemExit('ERROR: old canned instant tutor route is still exposed')
 
-print('AISAC 2020+ MULTI-CASE + REAL PLAYER RESOLVER + FULL-FRAME VIDEO OK')
+print('AISAC REAL VIDEO + FIRST-FRAME PREVIEW + YOUTH OTT + AI OFF ROUTES OK')
 PY
 
 echo "[5/7] Database migration"
@@ -181,7 +188,7 @@ echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' 'aisac-player-frame' 'max-height:250px' '2020-01-01'; do
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' 'aisac-player-frame' 'aisac-picker-video' '서비스별 이용 비율입니다. 선호도·만족도' 'max-height:250px' '2020-01-01'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
     exit 1
@@ -195,5 +202,5 @@ if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
   echo "ERROR: old forced typography/readability UI still active"
   exit 1
 fi
-echo "ROOT PAGE + AISAC REAL PLAYER + FULL-FRAME VIDEO + 3 TOPICS OK"
+echo "ROOT PAGE + AISAC VIDEO PREVIEW + OTT 13-19 + AI OFF ROUTES OK"
 echo "DEPLOY OK"
