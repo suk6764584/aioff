@@ -9,22 +9,19 @@ git pull --ff-only origin main
 echo "[2/7] Install/update dependencies"
 .venv/bin/pip install -r requirements.txt
 
-# KOBACO data is intentionally kept out of Git. If a snapshot zip was copied
-# next to deploy.sh, unpack only parquet files into the local data directory.
 echo "[3/7] Prepare KOBACO Parquet snapshot"
 KOBACO_DIR="/opt/aioff/raw_data/parquet_db"
 mkdir -p "$KOBACO_DIR"
-if ! compgen -G "$KOBACO_DIR/*.parquet" >/dev/null; then
-  KOBACO_ARCHIVE=""
-  for candidate in raw_data.Zip raw_data.zip kobaco_data.zip KOBACO_data.zip; do
-    if [ -f "/opt/aioff/$candidate" ]; then
-      KOBACO_ARCHIVE="/opt/aioff/$candidate"
-      break
-    fi
-  done
+KOBACO_ARCHIVE=""
+for candidate in kobaco_data.zip KOBACO_data.zip raw_data.Zip raw_data.zip; do
+  if [ -f "/opt/aioff/$candidate" ]; then
+    KOBACO_ARCHIVE="/opt/aioff/$candidate"
+    break
+  fi
+done
 
-  if [ -n "$KOBACO_ARCHIVE" ]; then
-    .venv/bin/python - "$KOBACO_ARCHIVE" "$KOBACO_DIR" <<'PY'
+if [ -n "$KOBACO_ARCHIVE" ]; then
+  .venv/bin/python - "$KOBACO_ARCHIVE" "$KOBACO_DIR" <<'PY'
 from pathlib import Path
 import sys
 import zipfile
@@ -46,23 +43,25 @@ with zipfile.ZipFile(archive) as zf:
                     break
                 dst.write(chunk)
         count += 1
-print(f"Extracted {count} parquet files from {archive.name}")
+print(f"Extracted/updated {count} parquet files from {archive.name}")
 PY
-  else
-    echo "WARN: KOBACO parquet snapshot not found. Copy raw_data.Zip to /opt/aioff to activate DB-backed lessons."
-  fi
+else
+  echo "WARN: KOBACO parquet snapshot not found."
 fi
 KOBACO_COUNT=$(find "$KOBACO_DIR" -maxdepth 1 -type f -name '*.parquet' | wc -l | tr -d ' ')
 echo "KOBACO parquet files: $KOBACO_COUNT"
+if [ -f "$KOBACO_DIR/public_ad_master.parquet" ]; then
+  echo "Official public-ad thumbnail metadata: READY"
+else
+  echo "WARN: public_ad_master.parquet missing; official thumbnail matching will be limited."
+fi
 
-# Prototype mode: keep secret keys, but pin the free-tier models.
 if [ -f .env ]; then
   if grep -q '^GEMINI_MODEL=' .env; then
     sed -i 's/^GEMINI_MODEL=.*/GEMINI_MODEL=gemini-3.5-flash-lite/' .env
   else
     printf '\nGEMINI_MODEL=gemini-3.5-flash-lite\n' >> .env
   fi
-
   if grep -q '^GROQ_MODEL=' .env; then
     sed -i 's#^GROQ_MODEL=.*#GROQ_MODEL=openai/gpt-oss-20b#' .env
   else
@@ -71,7 +70,7 @@ if [ -f .env ]; then
 fi
 
 echo "[4/7] Syntax check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py migrate_db.py
 
 echo "[5/7] Database migration"
 .venv/bin/python migrate_db.py
@@ -86,7 +85,6 @@ cp -f aioff.service /etc/systemd/system/aioff.service
 systemctl daemon-reload
 systemctl enable aioff >/dev/null
 systemctl restart aioff
-
 sleep 2
 
 echo "[7/7] Health + KOBACO + root page check"
@@ -96,6 +94,6 @@ curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
 grep -q 'KOBACO DATA' /tmp/aioff_root.html
-grep -q 'kobaco-visual' /tmp/aioff_root.html
-echo "ROOT PAGE + VISUAL UI OK"
+grep -q 'kobaco-thumb-stage' /tmp/aioff_root.html
+echo "ROOT PAGE + THUMBNAIL UI OK"
 echo "DEPLOY OK"
