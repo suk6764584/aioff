@@ -8,7 +8,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/aioff
 EnvironmentFile=-/opt/aioff/.env
-ExecStart=/opt/aioff/.venv/bin/uvicorn literacy_media_app_10:app --host 0.0.0.0 --port 3000
+ExecStart=/opt/aioff/.venv/bin/uvicorn literacy_kobaco_app_1:app --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=3
 
