@@ -8,7 +8,6 @@ Type=simple
 User=root
 WorkingDirectory=/opt/aioff
 EnvironmentFile=-/opt/aioff/.env
-# compatibility marker for deploy regression check: literacy_kobaco_app_11:app
 ExecStart=/opt/aioff/.venv/bin/uvicorn literacy_kobaco_app_12:app --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=3
