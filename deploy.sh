@@ -70,7 +70,7 @@ if [ -f .env ]; then
 fi
 
 echo "[4/7] Syntax check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py migrate_db.py
+.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py migrate_db.py
 
 echo "[5/7] Database migration"
 .venv/bin/python migrate_db.py
@@ -87,14 +87,18 @@ systemctl enable aioff >/dev/null
 systemctl restart aioff
 sleep 2
 
-echo "[7/7] Health + KOBACO + staged-learning page check"
+echo "[7/7] Health + KOBACO + readable-learning page check"
 curl -fsS http://127.0.0.1:3000/health
 echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
 grep -q 'KOBACO DATA' /tmp/aioff_root.html
-grep -q '광고를 먼저 보고 내 판단 만들기' /tmp/aioff_root.html
-grep -q 'kobaco-media-thumb' /tmp/aioff_root.html
-echo "ROOT PAGE + STAGED LEARNING UI OK"
+grep -q '광고 살펴보기' /tmp/aioff_root.html
+grep -q '세부 DB 근거 보기' /tmp/aioff_root.html
+if grep -q '아직 조사 수치를 보지 않습니다' /tmp/aioff_root.html; then
+  echo "ERROR: repeated pre-survey guidance still present"
+  exit 1
+fi
+echo "ROOT PAGE + READABILITY UI OK"
 echo "DEPLOY OK"
