@@ -102,10 +102,22 @@ required_page_markers = (
     'kobaco_publicad_',
     'kobaco_ott_',
     '실제 조사 원자료 항목 보기',
+    'function fixedDataMedia(c,kind,title,intro)',
 )
 for marker in required_page_markers:
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
+
+# 마지막 caseMedia 구현이 세 유형을 직접 처리해야 합니다.
+last_case_media = page.rfind('function caseMedia(c)')
+if last_case_media < 0:
+    raise SystemExit('ERROR: final caseMedia renderer missing')
+final_renderer = page[last_case_media:]
+for marker in ('kobaco_publicad_', 'kobaco_aisac_', 'kobaco_ott_', 'fixedDataMedia'):
+    if marker not in final_renderer:
+        raise SystemExit(f'ERROR: final case renderer missing branch: {marker}')
+if 'caseMediaV4(c)' in final_renderer:
+    raise SystemExit('ERROR: recursive legacy caseMedia fallback still active in final renderer')
 
 if not hasattr(m, 'kobaco_ai_chat_stream'):
     raise SystemExit('ERROR: adaptive AI tutor route missing')
@@ -117,8 +129,10 @@ if 'def _lesson_reply(' in source:
     raise SystemExit('ERROR: old canned lesson reply function still present')
 if '첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다' not in source:
     raise SystemExit('ERROR: public-ad pedagogy guard missing')
+if '세 데이터 유형을 여기서 직접 렌더링해 재귀 호출을 완전히 끊습니다.' not in source:
+    raise SystemExit('ERROR: recursion guard renderer missing')
 
-print('TOPIC MAPPING + UI + ADAPTIVE TUTOR OK')
+print('TOPIC MAPPING + UI + ADAPTIVE TUTOR + RENDERER REGRESSION OK')
 PY
 
 echo "[5/7] Database migration"
@@ -142,7 +156,7 @@ echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기'; do
+for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '실제 조사 원자료 항목 보기' 'function fixedDataMedia(c,kind,title,intro)'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
     exit 1
@@ -156,5 +170,5 @@ if grep -q 'def _lesson_reply(' literacy_kobaco_app_10.py; then
   echo "ERROR: canned lesson reply still present"
   exit 1
 fi
-echo "ROOT PAGE + 3 TOPICS + ADAPTIVE AI TUTOR OK"
+echo "ROOT PAGE + 3 TOPICS + ADAPTIVE AI TUTOR + DIRECT CASE RENDERER OK"
 echo "DEPLOY OK"
