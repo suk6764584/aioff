@@ -21,6 +21,8 @@ _LINK_PATTERNS = (
     re.compile(r'(?:location\.href|window\.location|location)\s*=\s*["\']([^"\']+)["\']', re.I),
 )
 _MEDIA_PATTERNS = (
+    # AiSAC 실제 상세페이지는 .mp4 확장자 없이 /advideo/video/... 엔드포인트를 사용합니다.
+    re.compile(r'<source[^>]+src=["\']([^"\']*/site/main/advideo/video/[^"\']+)["\']', re.I),
     re.compile(r'<source[^>]+src=["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
     re.compile(r'<video[^>]+src=["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
     re.compile(r'["\'](?:file|src|videoUrl|video_url|movieUrl|movie_url|fileUrl|file_url|vodUrl|vod_url)["\']\s*[:=]\s*["\']([^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
@@ -28,6 +30,7 @@ _MEDIA_PATTERNS = (
     re.compile(r'["\']([^"\']+/[^"\']+\.(?:mp4|webm|ogg)(?:\?[^"\']*)?)["\']', re.I),
 )
 _IFRAME_PATTERN = re.compile(r'<iframe[^>]+src=["\']([^"\']+)["\']', re.I)
+_POSTER_PATTERN = re.compile(r'<video[^>]+poster=["\']([^"\']+)["\']', re.I)
 _ID_PATTERNS = (
     re.compile(r'advId(?:=|%3D|\s*[:=]\s*["\']?)([A-Za-z0-9_\-]{4,})', re.I),
     re.compile(r'(?:view|detail|goView|fnView|moveView)[^(]*\([^)]*["\']([A-Za-z0-9_\-]{4,})["\']', re.I),
@@ -99,6 +102,13 @@ def _extract_media(page: str, base_url: str) -> str:
     return ""
 
 
+def _extract_poster(page: str, base_url: str) -> str:
+    match = _POSTER_PATTERN.search(page or "")
+    if not match:
+        return ""
+    return _clean_url(match.group(1), base_url)
+
+
 def _extract_iframe(page: str, base_url: str) -> str:
     candidates = []
     for match in _IFRAME_PATTERN.finditer(page or ""):
@@ -123,36 +133,28 @@ def _resolve_assets(case) -> dict[str, str]:
 
     try:
         search_page = v11._fetch_html(search_url)
-        assets["thumb"] = v11._extract_image(search_page, search_url, title)
         candidates = _detail_candidates(search_page, search_url, title)
 
-        # 기존 resolver가 상세주소를 찾았다면 후보에 포함하되, 그것만 믿지는 않습니다.
+        # 기존 resolver에서 확인한 상세주소만 후보로 활용합니다. 임의 이미지/영상은 재사용하지 않습니다.
         legacy = v11._resolve_aisac_assets(case)
         if legacy.get("detail") and legacy["detail"] not in candidates:
             candidates.insert(0, legacy["detail"])
-        if legacy.get("thumb") and not assets["thumb"]:
-            assets["thumb"] = legacy["thumb"]
 
         for detail_url in candidates:
             try:
                 detail_page = v11._fetch_html(detail_url, referer=search_url)
             except Exception:
                 continue
-            # 실제 광고 제목 또는 미디어 마커가 있는 페이지를 우선 채택합니다.
+            # 실제 광고 제목 또는 AiSAC 영상 태그가 있는 상세페이지를 채택합니다.
             low_page = detail_page.lower()
-            if title and title.lower() not in low_page and not any(x in low_page for x in ("<video", ".mp4", ".webm", "<iframe")):
+            if title and title.lower() not in low_page and "/site/main/advideo/video/" not in low_page:
                 continue
             assets["detail"] = detail_url
             assets["video"] = _extract_media(detail_page, detail_url)
             assets["iframe"] = _extract_iframe(detail_page, detail_url)
-            detail_thumb = v11._extract_image(detail_page, detail_url, title)
-            if detail_thumb:
-                assets["thumb"] = detail_thumb
+            assets["thumb"] = _extract_poster(detail_page, detail_url)
             if assets["video"] or assets["iframe"]:
                 break
-
-        if not assets["video"] and legacy.get("video"):
-            assets["video"] = legacy["video"]
     except Exception as exc:
         base.core.logger.warning("AiSAC v13 resolve failed for %s: %s", case_id, type(exc).__name__)
 
@@ -188,7 +190,14 @@ def aisac_thumb_v13(case_id: str, request: FastAPIRequest):
             referer=assets["detail"] or str(case.get("aisac_search_url") or ""),
             fallback_type="image/jpeg",
         )
-    return v11.aisac_thumbnail(case_id, request)
+    title = html.escape(str(case.get("title") or "KOBACO AiSAC 광고"))
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+    <rect width="1280" height="720" fill="#171513"/>
+    <text x="70" y="94" fill="#f18a5b" font-family="Arial,sans-serif" font-size="24" font-weight="700">KOBACO AiSAC</text>
+    <foreignObject x="70" y="190" width="1140" height="300"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;color:white;font-size:44px;font-weight:800;line-height:1.25">{title}</div></foreignObject>
+    <text x="70" y="620" fill="#b8ada3" font-family="Arial,sans-serif" font-size="21">영상 재생 시 실제 광고 화면을 확인할 수 있습니다.</text>
+    </svg>'''
+    return Response(svg.encode("utf-8"), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=600"})
 
 
 @app.get("/api/aisac-video/{case_id}")
@@ -221,10 +230,10 @@ def aisac_player_v13(case_id: str):
     elif assets["detail"]:
         src = html.escape(assets["detail"], quote=True)
         body = f'''<a class="fallback" href="{src}" target="_blank" rel="noopener">
-          <img src="{poster}" alt="{title} 썸네일"><span>원본 광고 열기</span>
+          <img src="{poster}" alt="{title} 미리보기"><span>원본 광고 열기</span>
         </a>'''
     else:
-        body = f'<img class="poster" src="{poster}" alt="{title} 썸네일">'
+        body = f'<img class="poster" src="{poster}" alt="{title} 미리보기">'
 
     return HTMLResponse(f'''<!doctype html><html><head><meta charset="utf-8"><style>
 html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#171513}}
