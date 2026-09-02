@@ -8,9 +8,9 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 
 import literacy_kobaco_app_9 as previous
 
-# v9의 1:1 공익광고 매칭/캐시 정책은 유지합니다.
-# v10은 학생 화면에서 주제 클릭 이벤트를 하나로 통합하고,
-# KOBACO 학습 대화는 외부 모델 호출 없이 즉시 응답하도록 정리합니다.
+# v9까지의 KOBACO DB/공익광고 1:1 매칭/AI OFF 흐름은 유지합니다.
+# v10은 세 주제의 화면 진입을 하나로 통합하고,
+# 학습 대화는 실제 KOBACO 값을 근거로 Gemini/Groq가 학생 답변에 맞춰 설명합니다.
 app = previous.app
 base = previous.base
 flow = previous.flow
@@ -19,10 +19,6 @@ v6 = previous.v6
 v4 = previous.v4
 
 
-# ---------------------------------------------------------------------------
-# 1) 주제별 사례를 현재 CASE_LIBRARY에서 직접 직렬화
-#    이전 스크립트의 중복 click listener / stale sample 상태에 의존하지 않습니다.
-# ---------------------------------------------------------------------------
 def _topic_payload() -> dict[str, list[dict[str, Any]]]:
     payload: dict[str, list[dict[str, Any]]] = {}
     for lesson_id in ("news", "deepfake", "ai"):
@@ -35,8 +31,13 @@ def _topic_payload() -> dict[str, list[dict[str, Any]]]:
                     "id": case.get("id", ""),
                     "label": case.get("label", ""),
                     "title": case.get("title", ""),
+                    "claim": case.get("claim", ""),
                     "source_name": case.get("source_name", ""),
                     "source_url": case.get("source_url", ""),
+                    "source_excerpt": case.get("source_excerpt", ""),
+                    "media_type": case.get("media_type", ""),
+                    "media_url": case.get("media_url", ""),
+                    "media_caption": case.get("media_caption", ""),
                     "data_rows": case.get("data_rows", []),
                     "db_tables": case.get("db_tables", []),
                     "data_note": case.get("data_note", ""),
@@ -45,10 +46,6 @@ def _topic_payload() -> dict[str, list[dict[str, Any]]]:
     return payload
 
 
-# ---------------------------------------------------------------------------
-# 2) 학습 채팅: 이 3개 KOBACO 모듈은 DB 값과 정해진 학습 순서로 즉시 응답
-#    모델은 AI OFF 분석/문제 생성 단계에서 계속 사용합니다.
-# ---------------------------------------------------------------------------
 def _rows(case: dict[str, Any]) -> dict[str, str]:
     return {
         str(row.get("label") or "").strip(): str(row.get("value") or "").strip()
@@ -60,60 +57,206 @@ def _student_turns(session_id: str) -> int:
     return sum(1 for m in base.core.messages(session_id, 30) if m["role"] == "user")
 
 
-def _short(text: str, limit: int = 55) -> str:
-    value = " ".join(str(text or "").split())
-    return value if len(value) <= limit else value[: limit - 1] + "…"
-
-
-def _lesson_reply(case_id: str, case: dict[str, Any], turn: int, answer: str) -> str:
-    rows = _rows(case)
-    answer = _short(answer)
-
-    if case_id.startswith("kobaco_publicad_"):
-        impact = rows.get("임팩트 1위", "-")
-        trust = rows.get("신뢰성", "-")
-        channel = rows.get("주요 인지경로", "-")
-        if turn == 0:
-            return f"내 생각: {answer}\nKOBACO 조사에서는 {impact}가 가장 강한 인상을 준 요소로 나타났어요.\n내가 기억한 부분과 조사 결과가 같은지 비교해보세요."
-        if turn == 1:
-            return f"신뢰성 항목은 {trust}예요. 여기서는 광고를 믿을 만하다고 느낀 정도를 살펴봅니다.\n이 숫자는 행동이 바뀐 사람의 비율을 뜻하지 않아요."
-        if turn == 2:
-            return f"광고를 접한 경로 중 가장 높은 값은 {channel}예요.\n이 수치는 어디에서 광고를 접했는지를 보여주며, 광고의 좋고 나쁨을 매긴 점수는 아니에요."
-        return "정리해볼게요. 광고 조사 숫자는 각각 묻는 내용이 달라요.\n숫자를 볼 때는 먼저 ‘무엇을 물어본 값인지’를 확인하면 됩니다."
-
+def _case_kind(case_id: str) -> str:
     if case_id.startswith("kobaco_aisac_"):
-        keywords = rows.get("키워드", "-")
-        advertiser = rows.get("광고주", "-")
-        counts = rows.get("인식 횟수", "-")
-        if turn == 0:
-            return f"AiSAC이 찾아낸 키워드는 {keywords}예요.\n이 키워드는 AI가 화면에서 찾은 요소이지, 광고의 뜻 자체는 아니에요."
-        if turn == 1:
-            return f"DB에는 광고주가 {advertiser}, AI 인식 횟수는 {counts}로 기록돼 있어요.\n이 값은 자료에 적힌 사실이고, 광고의 의도는 원본을 더 봐야 판단할 수 있어요."
-        if turn == 2:
-            return "AI가 찾은 사물·장소·키워드와 사람이 이해하는 광고의 뜻은 구분해서 봐야 해요.\nAI 인식값은 단서로 쓰고, 중요한 해석은 원본과 비교합니다."
-        return "이 수업의 핵심은 간단해요. AI가 찾은 요소와 광고의 뜻을 같은 것으로 보지 않는 것입니다."
-
+        return "aisac"
+    if case_id.startswith("kobaco_publicad_"):
+        return "publicad"
     if case_id.startswith("kobaco_ott_"):
-        group = rows.get("연도·집단", str(case.get("title") or "-"))
-        top = rows.get("이용비율 상위", "-")
-        sample = rows.get("사례수", "-")
-        nonuse = rows.get("OTT 비이용", "-")
-        if turn == 0:
-            return f"{group}의 이용 비율 상위 값은 {top}예요.\n여기서 보는 것은 ‘이용 비율’이며, ‘가장 좋아하는 서비스’를 묻는 선호도와는 달라요."
-        if turn == 1:
-            return f"이 표의 사례수는 {sample}, OTT 비이용은 {nonuse}예요.\n통계를 읽을 때는 숫자와 함께 누구를 조사했는지도 확인합니다."
-        if turn == 2:
-            return "이용률은 얼마나 이용했는지를 보여주는 값이에요.\n그래서 이 표만 보고 ‘가장 좋아하는 OTT’라고 바꾸어 말하면 안 됩니다."
-        return "정리하면 이용률과 선호도는 다른 말이에요.\n표에 적힌 항목 이름 그대로 읽는 것이 가장 안전합니다."
+        return "ott"
+    return "unknown"
 
-    return "자료를 다시 선택해 주세요."
+
+def _learning_prompt(
+    session_id: str,
+    user_message: str,
+    lesson_id: str,
+    case_id: str,
+    case: dict[str, Any],
+) -> str:
+    lesson = base.LESSONS[lesson_id]
+    prior = base.core.messages(session_id, 24)
+    history = "\n".join(
+        f"{'학생' if m['role'] == 'user' else '학습도우미'}: {m['content']}"
+        for m in prior
+    )
+    turn = _student_turns(session_id)
+    rows = _rows(case)
+    db_values = "\n".join(
+        f"- {label}: {value}" for label, value in rows.items()
+    ) or "- 표시된 DB 값 없음"
+    criteria = "\n".join(f"- {x}" for x in lesson.get("criteria", []))
+    kind = _case_kind(case_id)
+
+    if kind == "publicad":
+        stage = f'''
+[이 사례에서 가르칠 핵심]
+학생은 실제 공익광고를 본 뒤 자신의 해석을 적고, 그 다음 KOBACO 효과평가 값을 비교한다.
+학생이 적은 광고 해석과 조사 결과는 같은 종류의 정보가 아니다.
+
+현재 학생 답변 횟수: {turn}
+
+진행 규칙:
+- 첫 답변(turn=0)에서는 학생이 광고에서 무엇을 느꼈는지와 그 근거 장면·문구를 먼저 다룬다.
+- 학생이 '차별이 느껴진다', '희망적이다'처럼 해석을 말하면 그것을 KOBACO가 입증한 사실처럼 바꾸지 않는다.
+- 첫 답변부터 퍼센트 숫자를 정답처럼 던지지 않는다. 필요하면 "조사 자료도 뒤에서 비교한다"고만 안내해도 된다.
+- 조사값을 소개할 때는 반드시 항목 이름과 뜻을 먼저 설명한 뒤 전체 값을 함께 제시한다.
+- '신뢰성', '광고를 접한 경로', '가장 강한 인상을 준 요소'는 서로 다른 질문의 값이다.
+- 신뢰성 수치를 행동 변화 비율로, 인지경로 수치를 광고의 좋고 나쁨으로 바꾸어 설명하지 않는다.
+- 2~3회 대화 후에는 학생이 '자료가 직접 말하는 사실'과 '내 해석'을 한 문장씩 구분해보게 한다.
+- 이미 같은 판단 기준을 충분히 다뤘다면 반복 질문보다 핵심을 정리하고 AI OFF로 넘어갈 준비를 시킨다.
+'''
+    elif kind == "aisac":
+        stage = f'''
+[이 사례에서 가르칠 핵심]
+AiSAC이 기록한 사물·장소·키워드는 AI가 광고 화면에서 인식한 관찰값이다.
+그 값만으로 광고의 의도·메시지·감정까지 확정하면 안 된다.
+
+현재 학생 답변 횟수: {turn}
+
+진행 규칙:
+- 학생 답변을 먼저 읽고, 학생이 말한 내용 중 'DB로 확인되는 것'과 '사람의 해석'을 구분한다.
+- 키워드·광고주·인식 횟수를 한꺼번에 나열하지 말고, 학생 답에 필요한 값만 골라 설명한다.
+- AI가 인식한 키워드와 사람이 광고에서 이해한 메시지가 왜 다를 수 있는지 구체적으로 설명한다.
+- 중요한 해석은 원본 영상·문구·전체 맥락을 추가로 확인해야 한다는 기준을 실제 상황에 적용시킨다.
+- 2~3회 대화 후에는 다른 광고에도 적용할 수 있는 'AI 인식값 ≠ 의미 확정' 기준을 학생 말로 정리하게 한다.
+'''
+    elif kind == "ott":
+        stage = f'''
+[이 사례에서 가르칠 핵심]
+표는 특정 연도·연령집단의 OTT '이용 비율'을 보여준다.
+이용 비율을 선호도·만족도·전체 청소년의 보편적 성향으로 바꾸어 말하지 않는 법을 가르친다.
+
+현재 학생 답변 횟수: {turn}
+
+진행 규칙:
+- 학생이 표에서 읽은 결론을 먼저 확인하고, '이용률'과 '선호도'를 구분한다.
+- 수치를 소개할 때는 연도·집단·사례수 등 조건과 함께 말한다.
+- 학생이 '가장 좋아한다'처럼 표에 없는 개념으로 확대하면 왜 근거가 부족한지 설명한다.
+- 표에서 직접 말할 수 있는 문장 하나와 추가 확인이 필요한 문장 하나를 구분하게 한다.
+- 2~3회 대화 후에는 조사 조건을 확인하는 이유와 과잉 일반화를 피하는 기준을 정리한다.
+'''
+    else:
+        stage = '''
+[이 사례에서 가르칠 핵심]
+제공된 사례와 DB 값만 사용해 학생의 판단 근거를 확인하고, 사실과 해석을 구분하게 한다.
+'''
+
+    return f'''너는 초등 고학년~중학생이 실제 자료를 읽으며 생각하는 법을 배우도록 돕는 AI 학습도우미다.
+목표는 숫자나 정답을 대신 말해주는 것이 아니라, 학생 답변을 읽고 근거를 짚어주며 다음에도 쓸 수 있는 판단 방법을 가르치는 것이다.
+
+[학습 주제]
+{lesson.get('title', lesson_id)}
+
+[현재 사례]
+사례명: {case.get('title', '-')}
+자료 출처: {case.get('source_name', '-')}
+사례 설명: {case.get('claim', '-')}
+자료 발췌: {case.get('source_excerpt', '-')}
+
+[화면에 표시된 실제 KOBACO 값]
+{db_values}
+
+[이번 수업의 판단 기준]
+{criteria}
+
+{stage}
+
+[반드시 지킬 응답 규칙]
+1. 학생이 방금 쓴 내용을 먼저 이해하고 그 답에 직접 반응한다. 미리 정한 문장을 순서대로 재생하지 않는다.
+2. 한 답변은 보통 3~6문장으로 쓴다. 설명 없이 질문만 던지지 않는다.
+3. 학생이 틀리거나 자료보다 넓게 단정하면 왜 그런지 바로 교정한다. 무조건 동의하지 않는다.
+4. 학생이 '모르겠다'고 하면 질문을 반복하지 말고 먼저 확인 방법이나 읽는 방법을 2~3개 설명한다.
+5. 어려운 통계 용어를 먼저 쓰지 않는다. 필요하면 쉬운 뜻을 먼저 말하고 괄호 안에 공식 항목명을 붙인다.
+6. 숫자를 말할 때는 반드시 '무엇을 측정한 값인지'와 함께 말한다. 숫자만 단독으로 던지지 않는다.
+7. 제공된 DB/사례에 없는 사실, 광고 의도, 조사 방법, 인과효과를 만들어내지 않는다.
+8. 실시간 웹검색이나 RAG를 했다고 말하지 않는다.
+9. 같은 질문이나 같은 기준을 표현만 바꿔 반복하지 않는다.
+10. 마지막 질문은 필요할 때 하나만 한다. 충분히 배웠으면 질문 대신 학습 기준을 정리해도 된다.
+11. AI OFF 최종 3문제는 지금 미리 출제하지 않는다.
+12. 학생의 지능·성격·장기 능력을 평가하지 않는다.
+
+[지금까지 대화]
+{history or '(없음)'}
+
+[학생의 새 답변]
+{user_message}
+'''
+
+
+def _stream_model_reply(prompt: str, sid: str, user_message: str):
+    emitted = False
+    reply_parts: list[str] = []
+    gemini_error: Exception | None = None
+
+    try:
+        client = base.core.gemini_client()
+        stream = client.models.generate_content_stream(
+            model=base.core.gemini_model(),
+            contents=prompt,
+        )
+        for chunk in stream:
+            text = getattr(chunk, "text", None) or ""
+            if text:
+                emitted = True
+                reply_parts.append(text)
+                yield text
+        reply = "".join(reply_parts).strip()
+        if not reply:
+            raise ValueError("gemini_empty_response")
+        base.core.save_chat_exchange(sid, user_message, reply)
+        return
+    except Exception as exc:
+        gemini_error = exc
+        if emitted:
+            yield "\n\nAI 응답 전송이 중단되었습니다. 같은 답변을 다시 보내주세요."
+            return
+
+    if base.core.groq_configured():
+        try:
+            client = base.core.groq_client()
+            stream = client.chat.completions.create(
+                model=base.core.groq_model(),
+                messages=[{"role": "user", "content": prompt}],
+                max_completion_tokens=700,
+                temperature=0.25,
+                stream=True,
+            )
+            reply_parts = []
+            for chunk in stream:
+                choices = getattr(chunk, "choices", None) or []
+                if not choices:
+                    continue
+                delta = getattr(choices[0], "delta", None)
+                text = getattr(delta, "content", None) or ""
+                if text:
+                    reply_parts.append(text)
+                    yield text
+            reply = "".join(reply_parts).strip()
+            if not reply:
+                raise ValueError("groq_empty_response")
+            base.core.save_chat_exchange(sid, user_message, reply)
+            return
+        except Exception as groq_error:
+            base.core.logger.warning(
+                "Groq KOBACO learning fallback failed: %s",
+                type(groq_error).__name__,
+            )
+            yield "AI 학습도우미 연결에 실패했습니다. 잠시 후 같은 답변을 다시 보내주세요."
+            return
+
+    base.core.logger.warning(
+        "Gemini KOBACO learning failed: %s",
+        type(gemini_error).__name__ if gemini_error else "UnknownError",
+    )
+    yield "AI 학습도우미 연결에 실패했습니다. 잠시 후 같은 답변을 다시 보내주세요."
 
 
 base._remove_route("/api/chat-stream", "POST")
 
 
 @app.post("/api/chat-stream")
-def kobaco_instant_chat_stream(req: base.LiteracyChatRequest):
+def kobaco_ai_chat_stream(req: base.LiteracyChatRequest):
     sid = req.session_id or str(base.core.uuid.uuid4())
     lesson_id = req.lesson_id if req.lesson_id in base.LESSONS else base._get_lesson_id(sid)
     if lesson_id not in base.LESSONS:
@@ -128,41 +271,52 @@ def kobaco_instant_chat_stream(req: base.LiteracyChatRequest):
     if found_lesson != lesson_id:
         raise HTTPException(400, "선택한 주제와 사례가 맞지 않습니다. 사례를 다시 선택해 주세요.")
 
-    turn = _student_turns(sid)
-    reply = _lesson_reply(case_id, case, turn, req.message)
-    base.core.save_chat_exchange(sid, req.message, reply)
-
-    def immediate():
-        yield reply
+    prompt = _learning_prompt(sid, req.message, lesson_id, case_id, case)
 
     return StreamingResponse(
-        immediate(),
+        _stream_model_reply(prompt, sid, req.message),
         media_type="text/plain; charset=utf-8",
-        headers={"X-Session-Id": sid, "Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "X-Session-Id": sid,
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
-# ---------------------------------------------------------------------------
-# 3) 루트 화면: v5의 기본 화면을 사용해 최근 강제 글꼴/볼드 CSS는 제외하고,
-#    마지막 스크립트에서 기존 lesson-card 노드를 복제해 중복 listener를 제거합니다.
-# ---------------------------------------------------------------------------
 def _render_index_kobaco_v10():
     page = v5._render_index_kobaco_v5()
     topic_json = json.dumps(_topic_payload(), ensure_ascii=False).replace("</", "<\\/")
 
-    # 학생 화면에 필요 없는 개발/반복 문구만 간단히 정리합니다.
     replacements = {
         "실제 KOBACO 데이터에서 바로 시작합니다.": "실제 KOBACO 자료로 배워요.",
         "주제를 고르면 KOBACO Parquet DB에서 구성한 실제 데이터 사례가 무작위로 나타납니다.": "주제를 고르면 실제 자료 사례 3개가 나타납니다.",
-        "사례를 선택하면 사진·기사·문서와 DB 조회값, 판단할 주장을 보여주고 AI가 바로 첫 질문을 합니다.": "사례를 선택하고 자료를 살펴본 뒤 질문에 답해보세요.",
-        "아직 조사 수치를 보지 않습니다. 썸네일 또는 광고 영상을 보고 핵심 메시지와 기억에 남는 장면·문구·표현을 먼저 내 말로 설명해보세요.": "",
-        "실제 조사 결과는 첫 답변을 보낸 뒤 열립니다. 먼저 광고 자체를 읽어야 내 판단과 조사 결과를 비교할 수 있습니다.": "",
-        "광고를 먼저 보고 내 판단 만들기": "광고 보기",
-        "DB 조회값": "자료 값",
+        "사례를 선택하면 사진·기사·문서와 DB 조회값, 판단할 주장을 보여주고 AI가 바로 첫 질문을 합니다.": "사례를 선택하고 자료를 살펴본 뒤 내 생각을 적으면 AI가 답에 맞춰 함께 읽어줍니다.",
+        "아직 조사 수치를 보지 않습니다. 썸네일 또는 광고 영상을 보고 핵심 메시지와 기억에 남는 장면·문구·표현을 먼저 내 말로 설명해보세요.": "먼저 광고 자체를 봅니다. 어떤 메시지로 느꼈는지와 그렇게 느낀 장면·문구를 내 말로 적어보세요. 조사 수치는 첫 답변 뒤에 비교합니다.",
+        "실제 조사 결과는 첫 답변을 보낸 뒤 열립니다. 먼저 광고 자체를 읽어야 내 판단과 조사 결과를 비교할 수 있습니다.": "첫 답변 뒤 KOBACO 조사 자료가 열립니다. 내 해석과 조사 결과를 같은 것으로 보지 않고 서로 비교합니다.",
+        "광고를 먼저 보고 내 판단 만들기": "광고를 보고 내 해석 만들기",
+        "DB 조회값": "실제 조사·인식 데이터",
         "판단할 해석·상황": "생각해 볼 점",
     }
     for old, new in replacements.items():
         page = page.replace(old, new)
+
+    extra_css = r'''
+.kobaco-readable-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;padding:14px;background:#f8f5ef;border-bottom:1px solid #ddd5ca}
+.kobaco-readable-metric{background:#fff;border:1px solid #ddd5ca;border-radius:9px;padding:12px}
+.kobaco-readable-metric small{display:block;font-size:9px;font-weight:850;color:#776d63;line-height:1.4;margin-bottom:6px}
+.kobaco-readable-metric strong{display:block;font-size:14px;line-height:1.4;color:#28231f;margin-bottom:7px;word-break:keep-all}
+.kobaco-readable-metric p{margin:0;font-size:10px;line-height:1.55;color:#70675f}
+.kobaco-why{padding:13px 15px;background:#fff;border-bottom:1px solid #e4ddd3;font-size:11px;line-height:1.65;color:#5f574f}
+.kobaco-why b{display:block;color:#2d2925;margin-bottom:4px}
+.kobaco-topic-preview{height:86px;margin:-10px -10px 9px;border-radius:7px 7px 4px 4px;padding:11px;display:flex;flex-direction:column;justify-content:flex-end;background:#302b26;color:#fff}
+.kobaco-topic-preview b{font-size:10px;line-height:1.3;margin:0 0 3px!important;color:#fff}
+.kobaco-topic-preview span{font-size:8px;line-height:1.35;color:rgba(255,255,255,.7)}
+.kobaco-topic-preview.aisac{background:linear-gradient(135deg,#29313d,#3e536b)}
+.kobaco-topic-preview.ott{background:linear-gradient(135deg,#35302b,#665448)}
+@media(max-width:650px){.kobaco-readable-metrics{grid-template-columns:1fr}.kobaco-topic-preview{height:72px}}
+'''
+    page = page.replace("</style>", extra_css + "\n</style>")
 
     script = f'''
 <script>
@@ -178,30 +332,66 @@ function fixedSample(lessonId){{
   fixedSamples[lessonId]=fixedShuffle(fixedTopicCases[lessonId]||[]).slice(0,3);
   return fixedSamples[lessonId];
 }}
+function fixedPreview(c){{
+  const id=String(c.id||'');
+  if(id.startsWith('kobaco_publicad_') && typeof kobacoPickerPreview==='function') return kobacoPickerPreview(c);
+  if(id.startsWith('kobaco_aisac_')) return `<div class="kobaco-topic-preview aisac"><b>AI가 읽은 광고</b><span>AiSAC 인식값과 사람의 해석을 구분합니다.</span></div>`;
+  if(id.startsWith('kobaco_ott_')) return `<div class="kobaco-topic-preview ott"><b>청소년·OTT 통계</b><span>이용률과 선호도를 구분하고 조사 조건을 확인합니다.</span></div>`;
+  return '';
+}}
 function fixedPickerHtml(lessonId,activeId=null){{
   const cases=fixedSamples[lessonId]||fixedSample(lessonId);
   const total=(fixedTopicCases[lessonId]||[]).length;
   if(!total)return `<div class="chat-case-picker"><div class="chat-case-picker-head"><div><strong>이 주제의 사례를 불러오지 못했습니다.</strong><br><span>다른 주제를 선택하거나 새로고침해 주세요.</span></div></div></div>`;
-  return `<div class="chat-case-picker"><div class="chat-case-picker-head"><div><strong>사례를 골라보세요</strong><br><span>전체 ${{total}}개 중 3개를 보여줍니다.</span></div><button type="button" class="chat-case-shuffle" data-shuffle-cases>다른 사례 보기</button></div><div class="chat-case-options">${{cases.map((c,i)=>`<button type="button" class="chat-case-option ${{c.id===activeId?'active':''}}" data-case-id="${{c.id}}">${{typeof kobacoPickerPreview==='function'?kobacoPickerPreview(c):''}}<b>${{i+1}}. ${{esc(compactTitle(c.title))}}</b><small>${{esc(c.label||'')}}</small></button>`).join('')}}</div></div>`;
+  return `<div class="chat-case-picker"><div class="chat-case-picker-head"><div><strong>사례를 골라보세요</strong><br><span>전체 ${{total}}개 중 3개를 보여줍니다.</span></div><button type="button" class="chat-case-shuffle" data-shuffle-cases>다른 사례 보기</button></div><div class="chat-case-options">${{cases.map((c,i)=>`<button type="button" class="chat-case-option ${{c.id===activeId?'active':''}}" data-case-id="${{c.id}}">${{fixedPreview(c)}}<b>${{i+1}}. ${{esc(compactTitle(c.title))}}</b><small>${{esc(c.label||'')}}</small></button>`).join('')}}</div></div>`;
 }}
 function pickerHtml(lessonId,activeId=null){{return fixedPickerHtml(lessonId,activeId);}}
+
+function bindCaseButtons(lessonId){{
+  chat.querySelectorAll('[data-case-id]').forEach(btn=>btn.addEventListener('click',()=>startCase(lessonId,btn.dataset.caseId)));
+  const shuffle=chat.querySelector('[data-shuffle-cases]');
+  if(shuffle)shuffle.addEventListener('click',()=>{{
+    if(sessionId&&inlineCaseId&&!confirm('다른 사례를 보면 현재 대화가 새로 시작됩니다. 바꿀까요?'))return;
+    sessionId=null;inlineCaseId=null;resetInlineState();fixedSample(lessonId);
+    chat.innerHTML=fixedPickerHtml(lessonId);bindCaseButtons(lessonId);
+    input.disabled=true;send.disabled=true;finish.disabled=true;
+    input.placeholder='위에서 사례를 먼저 선택해 주세요.';stageText.textContent='사례를 선택하세요';chat.scrollTop=0;
+  }});
+}}
 function showCaseChooser(lessonId){{
   selectedLesson=lessonId;inlineLessonId=lessonId;inlineCaseId=null;sessionId=null;resetInlineState();
-  fixedSample(lessonId);
-  chat.innerHTML=fixedPickerHtml(lessonId);
-  bindCaseButtons(lessonId);
-  const shuffle=chat.querySelector('[data-shuffle-cases]');
-  if(shuffle)shuffle.addEventListener('click',()=>{{fixedSample(lessonId);chat.innerHTML=fixedPickerHtml(lessonId);bindCaseButtons(lessonId);showCaseShuffleButton(lessonId);}});
-  input.placeholder='위에서 사례를 먼저 선택해 주세요.';
-  stageText.textContent='사례를 선택하세요';
-  chat.scrollTop=0;
-}}
-function showCaseShuffleButton(lessonId){{
-  const shuffle=chat.querySelector('[data-shuffle-cases]');
-  if(shuffle)shuffle.addEventListener('click',()=>{{fixedSample(lessonId);chat.innerHTML=fixedPickerHtml(lessonId);bindCaseButtons(lessonId);showCaseShuffleButton(lessonId);}});
+  fixedSample(lessonId);chat.innerHTML=fixedPickerHtml(lessonId);bindCaseButtons(lessonId);
+  input.placeholder='위에서 사례를 먼저 선택해 주세요.';stageText.textContent='사례를 선택하세요';chat.scrollTop=0;
 }}
 
-// 앞 버전들이 lesson-card에 붙인 여러 click listener를 제거합니다.
+function kobacoPublicLearningCard(c){{
+  const rowsMap=kobacoRows(c);
+  const trust=rowsMap['신뢰성']||'-';
+  const channel=rowsMap['주요 인지경로']||'-';
+  const impact=rowsMap['임팩트 1위']||'-';
+  const tables=(c.db_tables||[]).map(x=>kobacoEsc(x)).join(' · ');
+  const rawRows=(c.data_rows||[]).map(r=>`<div class="kobaco-data-row"><b>${{kobacoEsc(r.label||'항목')}}</b><span>${{kobacoEsc(r.value||'-')}}</span></div>`).join('');
+  const metric=(label,value,meaning)=>`<div class="kobaco-readable-metric"><small>${{kobacoEsc(label)}}</small><strong>${{kobacoEsc(value)}}</strong><p>${{kobacoEsc(meaning)}}</p></div>`;
+
+  return `<div class="chat-case-media"><div class="kobaco-data-card">
+    <div class="kobaco-thumb-stage"><img src="/api/kobaco-media-thumb/${{encodeURIComponent(c.id)}}" alt="${{kobacoEsc(c.archive_title||c.title)}} 광고 영상 썸네일" loading="eager"><div class="kobaco-thumb-copy"><div class="kobaco-thumb-kicker">KOBACO 공익광고</div><div class="kobaco-thumb-title">${{kobacoEsc(c.archive_title||String(c.title||'').split(' · ')[0])}}</div><div class="kobaco-thumb-meta">${{kobacoEsc([c.archive_year,c.archive_category].filter(Boolean).join(' · '))}}</div></div></div>
+    <div class="kobaco-ad-actions">${{kobacoArchiveButton(c)}}${{kobacoVideoButton(c)}}</div>
+    <div class="kobaco-learn-step"><b><span class="kobaco-step-no">1</span>광고를 보고 내 해석 만들기</b><p>광고가 무엇을 말한다고 느꼈는지 적고, 그렇게 느낀 장면이나 문구를 하나 근거로 골라보세요. 이 단계의 내 해석은 조사 결과와 구분합니다.</p></div>
+    <div class="kobaco-data-lock"><b>첫 답변 뒤 실제 조사 자료가 열립니다.</b> 숫자를 맞히는 문제가 아니라, 내가 본 내용과 조사에서 측정한 내용을 비교하는 학습입니다.</div>
+    <div class="kobaco-after-answer" data-kobaco-after-answer>
+      <div class="kobaco-reveal-note">첫 판단 완료 · 실제 KOBACO 효과평가와 비교합니다.</div>
+      <div class="kobaco-why"><b>왜 이 자료를 보나요?</b>같은 광고라도 ‘믿을 만했는지’, ‘어디에서 봤는지’, ‘무엇이 가장 기억에 남았는지’는 서로 다른 질문입니다. 숫자를 보기 전에 무엇을 측정한 값인지부터 구분합니다.</div>
+      <div class="kobaco-readable-metrics">
+        ${{metric('광고의 신뢰성을 평가한 항목',trust,'광고를 믿을 만하다고 평가한 조사 항목입니다. 행동이 바뀐 사람의 비율이라는 뜻은 아닙니다.')}}
+        ${{metric('광고를 접한 경로 중 가장 높은 항목',channel,'어디에서 광고를 접했는지를 나타냅니다. 광고의 좋고 나쁨을 평가한 점수가 아닙니다.')}}
+        ${{metric('가장 강한 인상을 준 요소',impact,'기억에 남은 요소를 묻는 조사 항목입니다. 광고 전체 효과를 하나의 숫자로 나타낸 값이 아닙니다.')}}
+      </div>
+      <details class="kobaco-evidence" open><summary>실제 조사 원자료 항목 보기</summary><div class="kobaco-data-body"><div class="kobaco-data-kicker">KOBACO 데이터 · ${{tables}}</div><div class="kobaco-data-table">${{rawRows}}</div><div class="kobaco-data-note">${{kobacoEsc(c.data_note||'KOBACO 실제 데이터 조회값')}}</div></div></details>
+      <div class="kobaco-learn-step"><b><span class="kobaco-step-no">3</span>자료가 말하는 사실과 내 해석 나누기</b><p>AI와 대화하면서 조사값이 직접 말해주는 범위와 내가 광고에서 해석한 의미를 나눠봅니다. 마지막에는 같은 기준을 AI 없이 직접 적용합니다.</p></div>
+    </div>
+  </div></div>`;
+}}
+
 const oldCards=[...document.querySelectorAll('.lesson-card')];
 oldCards.forEach(old=>{{
   const card=old.cloneNode(true);
