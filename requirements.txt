@@ -6,3 +6,4 @@ duckdb
 requests
 beautifulsoup4
 pypdf
+fonttools
