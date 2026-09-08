@@ -14,7 +14,7 @@ def _render_entry_index() -> str:
     page = _RENDER_BEFORE_ENTRY()
     patch = r'''
 <style>
-/* Auth header only. Do not touch the learning layout. */
+/* Final auth header override only. Learning layout is untouched. */
 .aioff-auth-dock.aioff-auth-global{
   position:fixed!important;
   top:18px!important;
@@ -32,20 +32,39 @@ def _render_entry_index() -> str:
   overflow:visible!important;
 }
 
-/* One status dot only: the pseudo-dot on LOGIN ON/OFF. */
-.aioff-auth-state:before{
+/* Kill every legacy pseudo-dot in the auth area first. */
+.aioff-auth-dock *,
+.aioff-auth-dock *::before,
+.aioff-auth-dock *::after{
+  box-sizing:border-box!important;
+}
+.aioff-auth-dock *::before,
+.aioff-auth-dock *::after{
+  content:none!important;
+  display:none!important;
+}
+.mode-dot,.status-dot,.login-dot,.aioff-login-indicator,.aioff-mode-dot,
+[data-mode-label],.mode-label{
+  display:none!important;
+}
+
+/* Re-create exactly one state dot: gray OFF / blue ON. */
+.aioff-auth-state::before{
   content:""!important;
   display:inline-block!important;
   width:6px!important;
   height:6px!important;
+  min-width:6px!important;
+  min-height:6px!important;
   margin-right:6px!important;
   border-radius:50%!important;
   background:#aaa39a!important;
   vertical-align:1px!important;
 }
-.aioff-auth-dock.is-on .aioff-auth-state:before{background:#2f75e8!important}
+.aioff-auth-state::after{content:none!important;display:none!important}
+.aioff-auth-dock.is-on .aioff-auth-state::before{background:#2f75e8!important}
 
-/* Logged out: gray dot + LOGIN OFF, then compact login/signup buttons below. */
+/* Logged out: LOGIN OFF, then compact login/signup buttons. */
 .aioff-auth-dock:not(.is-on){
   display:inline-flex!important;
   flex-direction:column!important;
@@ -68,10 +87,15 @@ def _render_entry_index() -> str:
   margin:0!important;
   background:transparent!important;
   border:0!important;
+  border-radius:0!important;
   box-shadow:none!important;
   overflow:visible!important;
 }
 .aioff-auth-dock:not(.is-on) .aioff-auth-links button{
+  position:static!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
   width:auto!important;
   min-width:58px!important;
   height:28px!important;
@@ -88,7 +112,7 @@ def _render_entry_index() -> str:
   box-shadow:none!important;
 }
 
-/* Logged in: greeting + blue dot LOGIN ON + logout, all one line. */
+/* Logged in: greeting + LOGIN ON + logout on one row. */
 .aioff-auth-dock.is-on{
   display:inline-flex!important;
   flex-direction:row!important;
@@ -110,10 +134,15 @@ def _render_entry_index() -> str:
   margin:0!important;
   background:transparent!important;
   border:0!important;
+  border-radius:0!important;
   box-shadow:none!important;
 }
 .aioff-auth-dock.is-on .aioff-auth-links>span{display:none!important}
 .aioff-auth-dock.is-on .aioff-auth-links button{
+  position:static!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
   width:auto!important;
   min-width:0!important;
   height:30px!important;
@@ -129,30 +158,36 @@ def _render_entry_index() -> str:
   line-height:1!important;
   box-shadow:none!important;
 }
-.aioff-auth-greeting{font-size:10px!important;font-weight:750!important;color:#4c4742!important;white-space:nowrap!important}
+.aioff-auth-greeting{
+  font-size:10px!important;
+  font-weight:750!important;
+  color:#4c4742!important;
+  white-space:nowrap!important;
+}
 </style>
 <script>
 (() => {
-  function cleanAuthDock(){
+  function cleanAuthArtifacts(){
     const dock=document.querySelector('.aioff-auth-dock');
     if(!dock) return;
 
-    /* Remove legacy empty dot elements. LOGIN ON/OFF's dot is CSS ::before, so it remains. */
-    dock.querySelectorAll('*').forEach(el=>{
-      if(el.matches('.aioff-auth-state,.aioff-auth-links,.aioff-auth-greeting,button')) return;
-      if(el.children.length===0 && !(el.textContent||'').trim()) el.remove();
-    });
-
-    /* Remove old standalone ON/AI ON labels only; never touch LOGIN ON/OFF. */
+    /* Remove old standalone AI/ON labels. LOGIN ON/OFF is never touched. */
+    document.querySelectorAll('.mode-dot,.status-dot,.login-dot,.aioff-login-indicator,.aioff-mode-dot,[data-mode-label],.mode-label').forEach(el=>el.remove());
     document.querySelectorAll('body *').forEach(el=>{
       if(el.closest('.aioff-auth-state')) return;
       const text=(el.textContent||'').trim().replace(/\s+/g,' ');
       if(el.children.length===0 && (text==='ON'||text==='AI ON')) el.remove();
     });
+
+    /* Any empty legacy child inside the dock is an old indicator, not auth content. */
+    dock.querySelectorAll('*').forEach(el=>{
+      if(el.matches('.aioff-auth-state,.aioff-auth-links,.aioff-auth-greeting,button')) return;
+      if(el.children.length===0 && !(el.textContent||'').trim()) el.remove();
+    });
   }
 
-  cleanAuthDock();
-  new MutationObserver(cleanAuthDock).observe(document.body,{childList:true,subtree:true,characterData:true});
+  cleanAuthArtifacts();
+  new MutationObserver(cleanAuthArtifacts).observe(document.body,{childList:true,subtree:true,characterData:true});
 })();
 </script>
 '''
