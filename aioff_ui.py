@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import sqlite3
 from typing import Literal
 from urllib.parse import urljoin
 
@@ -218,6 +219,16 @@ def aioff_education_cases(request: Request):
 # Grade-adaptive education card generation
 # ---------------------------------------------------------------------------
 _ADAPTIVE_PACK_CACHE: dict[tuple[int, str, int], dict] = {}
+_EDUCATION_CONTEXT_CACHE: dict[int, str] = {}
+
+
+class EducationReadingDraft(BaseModel):
+    activity_title: str = ""
+    reading: list[str] = []
+
+
+class EducationQuestionDraft(BaseModel):
+    questions: list[str] = []
 
 
 def _learning_level_rules(user: dict | None) -> tuple[str, int]:
@@ -251,6 +262,120 @@ def _learning_level_rules(user: dict | None) -> tuple[str, int]:
     return ("학생 수준에 맞는 쉬운 표현을 사용하고, 자료 근거를 바탕으로 생각하게 한다.", 3)
 
 
+def _reading_plan(user: dict | None) -> tuple[int, int, str]:
+    level = str((user or {}).get("school_level") or "")
+    grade = int((user or {}).get("grade") or 0)
+    if level == "초" and grade <= 3:
+        return 3, 4, "각 문단은 1~2개의 짧은 문장으로 쓴다."
+    if level == "초":
+        return 4, 5, "각 문단은 2~3문장으로 쓰고 어려운 용어는 쉬운 말로 풀어쓴다."
+    if level == "중":
+        return 5, 6, "배경, 핵심 개념, 원인·영향, 판단 기준을 필요한 만큼 나누어 설명한다."
+    if level == "고":
+        return 5, 7, "핵심 개념뿐 아니라 근거, 한계, 위험, 적용 맥락까지 원문이 제공하는 범위에서 충분히 설명한다."
+    return 4, 6, "학생이 원문을 따로 열지 않아도 학습할 수 있을 만큼 충분히 설명한다."
+
+
+def _expanded_education_context(source: dict) -> str:
+    material_id = int(source.get("material_id") or 0)
+    if material_id in _EDUCATION_CONTEXT_CACHE:
+        return _EDUCATION_CONTEXT_CACHE[material_id]
+
+    fallback = str(source.get("context") or source.get("text") or "").strip()
+    db_path = previous.education_source.EDU_DB
+    if not material_id or not db_path.exists():
+        return fallback
+
+    try:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT id, attachment_id, page_start, page_end, section, text
+            FROM chunks
+            WHERE material_id=? AND TRIM(text)<>''
+            ORDER BY id
+            """,
+            (material_id,),
+        ).fetchall()
+        conn.close()
+    except Exception as exc:
+        base.core.logger.warning("Expanded education context failed: %s", type(exc).__name__)
+        return fallback
+
+    if not rows:
+        return fallback
+
+    selected_id = int(source.get("row_id") or 0)
+    selected_attachment = int(source.get("attachment_id") or 0)
+    candidates = [
+        row for row in rows
+        if not selected_attachment or int(row["attachment_id"] or 0) == selected_attachment
+    ] or rows
+
+    seed = str(source.get("text") or "")
+    ranked: list[tuple[int, sqlite3.Row]] = []
+    for row in candidates:
+        text = str(row["text"] or "").strip()
+        if not text:
+            continue
+        distance = abs(int(row["id"]) - selected_id) if selected_id else 0
+        score = max(0, 90 - distance * 8)
+        if int(row["id"]) == selected_id:
+            score += 220
+        try:
+            chunk_score, _ = previous._chunk_score(row)
+            score += max(-90, min(180, int(chunk_score)))
+        except Exception:
+            pass
+        try:
+            score += min(140, previous._text_overlap_score(seed, text) * 3)
+        except Exception:
+            pass
+        ranked.append((score, row))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    chosen: dict[int, sqlite3.Row] = {}
+    if selected_id:
+        for row in candidates:
+            if abs(int(row["id"]) - selected_id) <= 4:
+                chosen[int(row["id"])] = row
+    for _, row in ranked:
+        chosen[int(row["id"])] = row
+        if len(chosen) >= 16:
+            break
+
+    parts: list[str] = []
+    total = 0
+    for row_id in sorted(chosen):
+        row = chosen[row_id]
+        text = re.sub(r"\s+", " ", str(row["text"] or "")).strip()
+        if not text or text in parts:
+            continue
+        page = row["page_start"]
+        prefix = f"[원문 {page}쪽] " if page else "[원문] "
+        piece = prefix + text
+        if total + len(piece) > 22000 and parts:
+            break
+        parts.append(piece)
+        total += len(piece)
+
+    context = "\n\n".join(parts).strip() or fallback
+    _EDUCATION_CONTEXT_CACHE[material_id] = context
+    return context
+
+
+def _fallback_questions(count: int, reading: list[str]) -> list[str]:
+    if not reading:
+        return ["읽어보기에서 확인한 내용을 자신의 말로 한 문장으로 정리해보세요."]
+    bank = [
+        "읽어보기에서 가장 중요하다고 생각한 내용을 하나 골라 자신의 말로 설명해보세요.",
+        "읽어보기에서 그 판단을 뒷받침하는 근거를 하나 찾아 설명해보세요.",
+        "읽어보기의 내용을 실제 디지털 생활에 적용한다면 무엇을 조심하거나 확인해야 할지 적어보세요.",
+    ]
+    return bank[:max(1, count)]
+
+
 def _make_adaptive_study_pack(case: dict, source: dict, user: dict | None, visual: dict | None) -> dict:
     material_id = int(source.get("material_id") or 0)
     level = str((user or {}).get("school_level") or case.get("education_target") or "")
@@ -263,66 +388,107 @@ def _make_adaptive_study_pack(case: dict, source: dict, user: dict | None, visua
     visual_required = previous._visual_required(source)
     fallback = previous._fallback_study(case, source, visual_available)
     level_rules, question_count = _learning_level_rules(user)
+    min_paragraphs, max_paragraphs, paragraph_rule = _reading_plan(user)
     profile = f"{level} {grade}학년" if grade else (level or "학생")
     original_questions = "\n".join(f"- {q}" for q in source.get("prompts", [])) or "- 없음"
-    prompt = f"""다음 공식 디지털 리터러시 교육자료를 학생용 학습 카드로 재구성하라.
+    expanded_context = _expanded_education_context(source)
+
+    reading_prompt = f"""다음 공식 디지털 리터러시 교육자료를 학생이 실제로 읽을 학습 내용으로 재구성하라.
 
 학생: {profile}
 학년별 난이도 규칙: {level_rules}
 자료명: {case.get('title', '')}
 원문 파일: {source.get('source_name', '')}
 시각 자료가 화면에 함께 표시되는가: {'예' if visual_available else '아니오'}
-원래 활동이 시각 자료를 요구하는가: {'예' if visual_required else '아니오'}
 
-[원문]
-{source.get('context', '')[:8500]}
+[관련 원문 묶음]
+{expanded_context[:22000]}
 
-[원문 질문/활동문]
+[원문 활동문 - 학습 목적을 파악하는 참고용]
 {original_questions}
 
 작성 규칙:
-1. 원문이 뒷받침하는 내용만 사용하고 사실·수치·사례를 새로 만들지 않는다.
-2. reading은 원문을 그대로 복사하지 말고 학생 수준에 맞게 2~4개 문단으로 재구성한다.
-3. 페이지·차시·파일명·목차·교사용 지시·성취기준 같은 편집 정보는 제외한다.
-4. questions는 정확히 {question_count}개를 만든다. 학생의 학교급과 학년에 맞춰 어휘, 추론 단계, 필요한 답변 길이를 조정한다.
-5. 질문은 한 번에 하나의 핵심 사고를 요구한다. 여러 요구사항을 한 문장에 몰아넣지 않는다.
-6. 종이에 선 긋기·표시하기·스티커 붙이기 같은 활동은 웹에서 글로 답할 수 있게 바꾼다.
-7. 화면에 없는 표·그림·사진을 전제로 질문하지 않는다. 시각 자료가 있으면 관찰 질문은 가능하다.
-8. reading에서 질문의 정답을 그대로 알려주지 않는다.
-9. 파일 종류가 아니라 실제 학습 주제를 activity_title로 쓴다.
-10. 'AI가 정리했다', '모델', 'RAG', '생성' 같은 표현은 학생 화면에 쓰지 않는다.
+1. 원문이 뒷받침하는 사실·개념·사례만 사용하고 내용을 새로 만들지 않는다.
+2. 학생이 원문 PDF를 따로 열지 않아도 이 화면의 읽어보기만으로 뒤의 질문을 풀 수 있을 만큼 필요한 배경과 개념을 충분히 제공한다.
+3. 핵심 몇 문장만 남기는 과도한 요약을 하지 않는다. 원문에 배경, 특징, 원인, 영향, 위험, 주의점, 사례, 판단 기준이 있으면 학습 주제와 관련된 내용을 빠뜨리지 말고 연결해서 설명한다.
+4. reading은 {min_paragraphs}~{max_paragraphs}개 문단으로 작성한다. {paragraph_rule}
+5. 원문을 순서대로 복사하지 말고 학생 수준에 맞게 구조화하되, 중요한 구체 내용은 보존한다.
+6. 페이지·차시·파일명·목차·교사용 지시·성취기준 같은 편집 정보는 학생용 문단에서 제외한다.
+7. 화면에 없는 그림·표를 본 것처럼 설명하지 않는다. 시각자료는 보조자료일 뿐, 읽어보기 자체가 학습에 필요한 정보를 제공해야 한다.
+8. activity_title은 파일 종류가 아니라 실제 학습 주제를 쓴다.
+9. 'AI가 정리했다', '모델', 'RAG', '생성' 같은 표현을 쓰지 않는다.
+10. 이 단계에서는 질문을 만들지 않는다.
 
 JSON 스키마에 맞춰 반환하라."""
-    try:
-        draft, _ = base.core.generate_structured_with_fallback(
-            prompt,
-            previous.EducationStudyDraft,
-            max_output_tokens=950,
-        )
-        reading = [str(x).strip() for x in draft.reading if str(x).strip()][:4]
-        questions = [str(x).strip() for x in draft.questions if str(x).strip()][:question_count]
-        title = str(draft.activity_title or "").strip()
-        if not reading or len(questions) < min(2, question_count):
-            raise ValueError("adaptive_study_draft_incomplete")
-        pack = {
-            "activity_title": title or fallback["activity_title"],
-            "reading": reading,
-            "questions": questions,
-        }
-    except Exception as exc:
-        base.core.logger.warning("Adaptive education study generation failed: %s", type(exc).__name__)
-        pack = fallback
 
-    pack.update(
-        {
-            "visual_kind": (visual or {}).get("kind", ""),
-            "visual_available": visual_available,
-            "visual_required": visual_required,
-            "source_name": source.get("source_name", ""),
-            "page": (visual or {}).get("page") or source.get("page_start") or "",
-            "student_level": profile,
-        }
-    )
+    try:
+        reading_draft, _ = base.core.generate_structured_with_fallback(
+            reading_prompt,
+            EducationReadingDraft,
+            max_output_tokens=1700,
+        )
+        reading = [str(x).strip() for x in reading_draft.reading if str(x).strip()][:max_paragraphs]
+        title = str(reading_draft.activity_title or "").strip()
+        if len(reading) < min_paragraphs:
+            raise ValueError("education_reading_too_short")
+    except Exception as exc:
+        base.core.logger.warning("Education reading generation failed: %s", type(exc).__name__)
+        reading = [str(x).strip() for x in fallback.get("reading", []) if str(x).strip()]
+        title = str(fallback.get("activity_title") or case.get("title") or "").strip()
+
+    if not reading:
+        raw = re.sub(r"\s+", " ", expanded_context).strip()
+        reading = [raw[:1800]] if raw else ["이 자료에서 확인할 수 있는 내용을 살펴보세요."]
+
+    visible_reading = "\n\n".join(f"{i + 1}. {text}" for i, text in enumerate(reading))
+    question_prompt = f"""다음은 학생 화면에 실제로 표시될 '읽어보기' 내용이다. 이 내용만 읽은 학생이 답할 수 있는 질문을 만들어라.
+
+학생: {profile}
+학년별 난이도 규칙: {level_rules}
+학습 주제: {title or case.get('title', '')}
+
+[학생 화면에 실제 표시되는 읽어보기]
+{visible_reading}
+
+[원문 활동문 - 교육적 목적과 사고 유형만 참고]
+{original_questions}
+
+질문 작성 규칙:
+1. questions는 정확히 {question_count}개를 만든다.
+2. 질문의 사실 근거와 정답에 필요한 정보는 반드시 위 '읽어보기' 안에 있어야 한다. 원문 PDF에만 있고 화면에 표시되지 않은 내용을 알아야 풀 수 있는 질문은 절대 만들지 않는다.
+3. 원문 활동문은 질문의 목적과 사고 유형만 참고한다. 원문 활동문에만 등장하는 사실·용어·사례를 학생이 안다고 가정하지 않는다.
+4. 시각자료가 화면에 있더라도 답의 핵심은 읽어보기만으로 가능해야 한다. 그림·표를 봐야만 맞힐 수 있는 문제는 만들지 않는다.
+5. 한 질문에는 한 가지 핵심 사고만 요구한다. '무엇이며 왜 그런가'처럼 서로 다른 요구를 한 문장에 몰아넣지 않는다.
+6. 단순 문장 복사보다 이해, 비교, 근거 찾기, 적용 중 학생 수준에 맞는 사고를 요구한다.
+7. 읽어보기에 답 문장이 그대로 있더라도 질문 표현을 그대로 복제하지 말고 학생이 자기 말로 설명하게 한다.
+8. 질문끼리 같은 내용을 반복하지 않는다.
+
+JSON 스키마에 맞춰 반환하라."""
+
+    try:
+        question_draft, _ = base.core.generate_structured_with_fallback(
+            question_prompt,
+            EducationQuestionDraft,
+            max_output_tokens=700,
+        )
+        questions = [str(x).strip() for x in question_draft.questions if str(x).strip()][:question_count]
+        if len(questions) < question_count:
+            raise ValueError("education_questions_incomplete")
+    except Exception as exc:
+        base.core.logger.warning("Education question generation failed: %s", type(exc).__name__)
+        questions = _fallback_questions(question_count, reading)
+
+    pack = {
+        "activity_title": title or str(case.get("title") or "").strip(),
+        "reading": reading,
+        "questions": questions,
+        "visual_kind": (visual or {}).get("kind", ""),
+        "visual_available": visual_available,
+        "visual_required": visual_required,
+        "source_name": source.get("source_name", ""),
+        "page": (visual or {}).get("page") or source.get("page_start") or "",
+        "student_level": profile,
+    }
     _ADAPTIVE_PACK_CACHE[cache_key] = dict(pack)
     return pack
 
@@ -371,7 +537,9 @@ def _tutor_level_rules(user: dict | None) -> str:
 
 def _education_tutor_prompt(req: AioffTutorChatRequest, sid: str, case: dict, user: dict | None) -> str:
     source = previous._select_source(case)
-    evidence = str(source.get("context") or source.get("text") or "")[:7500]
+    visual = previous._build_visual(source)
+    pack = _make_adaptive_study_pack(case, source, user, visual)
+    evidence = "\n\n".join(str(x) for x in pack.get("reading", []) if str(x).strip())[:10000]
     question = str(req.current_question or case.get("opening_question") or "").strip()
     prior = base.core.messages(sid, 18)
     history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
@@ -383,7 +551,7 @@ def _education_tutor_prompt(req: AioffTutorChatRequest, sid: str, case: dict, us
     process_hint = (
         "오답이면 정답 내용을 말하지 말고, 학생이 질문에서 놓친 요구사항이 무엇인지 한 가지만 확인하게 한다."
         if req.question_attempt <= 1
-        else "오답이 반복되면 정답 키워드 대신 '질문의 두 부분을 나눠 보기', '자료에서 근거 한 문장 찾기' 같은 사고 절차만 제안한다."
+        else "오답이 반복되면 정답 키워드 대신 '질문을 한 부분씩 다시 읽기', '읽어보기에서 근거 문장을 찾아보기' 같은 사고 절차만 제안한다."
     )
 
     return f'''너는 디지털 리터러시 수업의 대화형 튜터다. 가장 중요한 일은 정답 키워드를 맞히게 하는 것이 아니라 학생이 실제로 무슨 뜻으로 답했는지 이해하는 것이다.
@@ -395,22 +563,23 @@ def _education_tutor_prompt(req: AioffTutorChatRequest, sid: str, case: dict, us
 이번 문항 시도 횟수: {req.question_attempt}
 학생의 이번 답변: {req.message}
 
-[공식 원문 근거]
-{evidence or '(원문 근거 없음)'}
+[학생 화면에 실제 표시된 읽어보기]
+{evidence or '(표시된 읽어보기 없음)'}
 
 [이전 대화]
 {history or '(없음)'}
 
 반드시 이 순서로 판단한다.
 1. 학생의 짧은 표현, 생략, 일상어를 문맥에 맞게 가장 합리적으로 해석한다.
-2. 학생이 사용한 단어가 원문 표현과 달라도 개념적으로 같은 뜻인지 본다. 키워드 일치 여부로 채점하지 않는다.
+2. 학생이 사용한 단어가 읽어보기 표현과 달라도 개념적으로 같은 뜻인지 본다. 키워드 일치 여부로 채점하지 않는다.
 3. 현재 문항이 실제로 요구하는 핵심 사고가 무엇인지 확인한 뒤, 학생 답이 그 사고에 닿아 있는지 본다.
 4. 의견·해석형 문항에는 하나의 정답 문구를 강요하지 않는다. 근거가 있고 질문에 맞는 다른 해석도 인정한다.
+5. 판정 근거는 학생 화면에 실제 표시된 읽어보기와 현재 질문으로 제한한다. 원문 PDF에는 있지만 읽어보기에 표시되지 않은 내용을 학생이 모른다는 이유로 감점하거나 다시 묻지 않는다.
 
 verdict 기준:
-- pass: 학생의 의도가 질문 핵심에 개념적으로 맞고 원문과 모순되지 않는다. 짧거나 표현이 거칠어도 의미가 충분히 전달되면 통과한다.
+- pass: 학생의 의도가 질문 핵심에 개념적으로 맞고 화면에 표시된 읽어보기와 모순되지 않는다. 짧거나 표현이 거칠어도 의미가 충분히 전달되면 통과한다.
 - clarify: 학생 답이 맞는 방향으로 해석될 가능성이 높지만 너무 짧거나 모호해서 뜻을 확정하기 어렵다. 이때는 오답 처리하지 않는다.
-- retry: 학생의 뜻을 최대한 호의적으로 해석해도 질문과 무관하거나 원문과 명확히 모순되거나 핵심 요구를 잘못 이해했다.
+- retry: 학생의 뜻을 최대한 호의적으로 해석해도 질문과 무관하거나 화면에 표시된 읽어보기와 명확히 모순되거나 핵심 요구를 잘못 이해했다.
 
 clarify일 때:
 - 학생이 이미 쓴 표현을 그대로 받아서 그 말의 뜻을 자기 말로 조금만 풀어 달라고 묻는다.
@@ -424,14 +593,15 @@ retry일 때:
 
 pass일 때:
 - 먼저 '네 답을 이런 뜻으로 이해했다'고 학생 의도를 짧게 바꿔 말한다.
-- 왜 질문에 맞는 판단인지 근거를 짧게 설명한다.
+- 왜 질문에 맞는 판단인지 화면에 표시된 읽어보기를 기준으로 짧게 설명한다.
 - 다음 문항을 새로 만들지 않는다. 화면에서 다음 문항으로 넘어간다.
 
 금지:
 - 정답 문구를 유도하기 위해 같은 질문을 표현만 바꿔 반복하기
 - 학생이 말하지 않은 정답 키워드를 힌트라는 이름으로 먼저 제시하기
-- 원문 문장과 단어가 다르다는 이유만으로 retry 하기
+- 읽어보기 문장과 단어가 다르다는 이유만으로 retry 하기
 - 학생 답의 의미를 해석하지 않고 누락 키워드만 검사하기
+- 화면에 표시되지 않은 PDF 원문 지식을 요구하기
 
 response에는 학생에게 보여줄 자연스러운 말만 작성하고 verdict 이름이나 모델명은 쓰지 않는다.'''
 
