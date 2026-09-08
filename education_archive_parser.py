@@ -10,6 +10,11 @@ from bs4 import BeautifulSoup
 BASE_URL = "https://xn--2z1b40gs9nlqcf0n.kr"
 LIST_URL = BASE_URL + "/front/archive/archiveMainList.do"
 DEFAULT_TARGETS = ("초등", "중등", "고등")
+OFFICIAL_TARGETS = (
+    "유아", "초등", "중등", "고등", "학부모", "성인", "고령층", "장애학생",
+    "발달장애(초등)", "발달장애(중고등)", "발달장애(성인)", "군인", "교사",
+    "전체 대상", "기소유예자",
+)
 USER_AGENT = "AI-OFF-Education-RAG/1.0 (+https://aioff-ai.duckdns.org/)"
 
 _EXT_RE = re.compile(
@@ -24,6 +29,24 @@ _FILEDOWN_RE = re.compile(
 
 def norm(text: str) -> str:
     return re.sub(r"\s+", " ", html.unescape(text or "")).strip()
+
+
+def target_labels(value: str) -> tuple[str, ...]:
+    """Return the archive's own target labels without substring inference.
+
+    A regular elementary student must not accidentally match a distinct archive
+    category such as '발달장애(초등)'. Multi-target cards such as
+    '초등 / 중등 / 고등' are split into their explicit labels.
+    """
+    raw = norm(value)
+    if not raw:
+        return ()
+    labels = []
+    for item in re.split(r"\s*(?:/|,|·|ㆍ)\s*", raw):
+        label = norm(item)
+        if label and label not in labels:
+            labels.append(label)
+    return tuple(labels)
 
 
 def lines_of(node) -> list[str]:
@@ -236,7 +259,8 @@ def parse_card(card, page_index: int) -> dict:
 
 
 def school_materials(rows: list[dict], targets: tuple[str, ...]) -> list[dict]:
-    return [row for row in rows if any(target in row.get("target", "") for target in targets)]
+    wanted = set(targets)
+    return [row for row in rows if wanted.intersection(target_labels(row.get("target", "")))]
 
 
 def safe_filename(value: str) -> str:
