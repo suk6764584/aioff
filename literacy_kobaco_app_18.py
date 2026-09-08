@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+import base64
 import os
+import re
+import secrets
+import sqlite3
+import time
 
 import requests
-from fastapi import HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import HTTPException, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
 
 import auth_proto as auth
 import literacy_kobaco_app_17 as previous
@@ -12,6 +18,151 @@ import literacy_kobaco_app_17 as previous
 app = previous.app
 base = previous.base
 flow = previous.flow
+
+
+# v18 auth migration: 이메일은 연락정보로 유지하고, 로그인용 아이디를 별도 저장한다.
+def _ensure_login_id_column() -> None:
+    with auth._connect() as conn:
+        cols = {str(row[1]) for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "login_id" not in cols:
+            conn.execute("ALTER TABLE users ADD COLUMN login_id TEXT")
+        conn.execute(
+            "UPDATE users SET login_id=email WHERE login_id IS NULL OR TRIM(login_id)=''"
+        )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login_id ON users(login_id)"
+        )
+        conn.commit()
+
+
+_ensure_login_id_column()
+
+
+def _normalize_login_id(value: str) -> str:
+    return (value or "").strip().lower()
+
+
+class LoginRequestV18(BaseModel):
+    login_id: str = Field(min_length=3, max_length=30)
+    password: str = Field(min_length=1, max_length=100)
+
+
+class RegisterRequestV18(BaseModel):
+    login_id: str = Field(min_length=3, max_length=30)
+    email: str = Field(min_length=3, max_length=200)
+    password: str = Field(min_length=6, max_length=100)
+    name: str = Field(min_length=1, max_length=30)
+    phone: str = Field(min_length=8, max_length=30)
+    school_level: str
+    school_region: str
+    school_name: str = Field(min_length=1, max_length=120)
+    school_code: str = Field(default="", max_length=30)
+    grade: int
+
+
+def _set_session_cookie_v18(response: JSONResponse, token: str) -> None:
+    secure = os.getenv("AUTH_COOKIE_SECURE", "1").strip().lower() not in {"0", "false", "no"}
+    response.set_cookie(
+        key=auth.COOKIE_NAME,
+        value=token,
+        max_age=auth.SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+base._remove_route("/api/auth/login", "POST")
+base._remove_route("/api/auth/register", "POST")
+
+
+@app.post("/api/auth/login")
+def auth_login_v18(payload: LoginRequestV18):
+    login_id = _normalize_login_id(payload.login_id)
+    with auth._connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE LOWER(login_id)=? OR LOWER(email)=? LIMIT 1",
+            (login_id, login_id),
+        ).fetchone()
+    if not row:
+        raise HTTPException(401, "아이디 또는 비밀번호를 확인해 주세요.")
+
+    try:
+        salt = base64.b64decode(row["password_salt"])
+        expected = base64.b64decode(row["password_hash"])
+    except Exception:
+        raise HTTPException(401, "아이디 또는 비밀번호를 확인해 주세요.")
+
+    actual = auth._hash_password(payload.password, salt)
+    if not auth.hmac.compare_digest(actual, expected):
+        raise HTTPException(401, "아이디 또는 비밀번호를 확인해 주세요.")
+
+    user = auth._public_user(row)
+    token = auth.create_session(int(row["id"]))
+    response = JSONResponse({"ok": True, "user": user})
+    _set_session_cookie_v18(response, token)
+    return response
+
+
+@app.post("/api/auth/register")
+def auth_register_v18(payload: RegisterRequestV18):
+    login_id = _normalize_login_id(payload.login_id)
+    if not re.fullmatch(r"[^\s@]{3,30}", login_id):
+        raise HTTPException(400, "아이디는 공백 없이 3~30자로 입력해 주세요.")
+
+    try:
+        clean = auth.validate_registration(payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    salt = secrets.token_bytes(16)
+    digest = auth._hash_password(clean.pop("password"), salt)
+    now = int(time.time())
+
+    try:
+        with auth._connect() as conn:
+            existing = conn.execute(
+                "SELECT 1 FROM users WHERE LOWER(login_id)=? LIMIT 1", (login_id,)
+            ).fetchone()
+            if existing:
+                raise HTTPException(400, "이미 사용 중인 아이디입니다.")
+
+            cur = conn.execute(
+                """
+                INSERT INTO users(
+                    login_id,email,password_hash,password_salt,name,phone,
+                    school_level,school_region,school_name,school_code,grade,created_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    login_id,
+                    clean["email"],
+                    base64.b64encode(digest).decode("ascii"),
+                    base64.b64encode(salt).decode("ascii"),
+                    clean["name"],
+                    clean["phone"],
+                    clean["school_level"],
+                    clean["school_region"],
+                    clean["school_name"],
+                    clean["school_code"],
+                    clean["grade"],
+                    now,
+                ),
+            )
+            user_id = int(cur.lastrowid)
+            row = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+            conn.commit()
+    except HTTPException:
+        raise
+    except sqlite3.IntegrityError:
+        raise HTTPException(400, "이미 가입된 이메일이거나 사용 중인 아이디입니다.")
+
+    user = auth._public_user(row)
+    token = auth.create_session(user_id)
+    response = JSONResponse({"ok": True, "user": user})
+    _set_session_cookie_v18(response, token)
+    return response
 
 
 # v18: 학교 검색은 한 줄짜리 autocomplete UI로 동작한다.
@@ -98,9 +249,7 @@ def _render_index_kobaco_v18():
   width:100%!important;
   padding-right:38px!important;
 }
-#aioff-school-search-btn{
-  display:none!important;
-}
+#aioff-school-search-btn,
 #aioff-school-manual-row{
   display:none!important;
 }
@@ -128,16 +277,14 @@ def _render_index_kobaco_v18():
 }
 .aioff-school-result b{font-size:12px!important}
 .aioff-school-result small{font-size:10px!important;margin-top:2px!important}
-#aioff-school-message{
-  margin-top:6px!important;
-  min-height:15px!important;
-}
+#aioff-school-message{margin-top:6px!important;min-height:15px!important}
 
-/* LOGIN ON일 때 큰 OFF 전용 박스는 없애고, 작은 로그아웃 링크만 남긴다. */
+/* LOGIN ON: 중복된 오른쪽 점은 제거하고 로그아웃은 버튼 크기로 키운다. */
+.aioff-auth-state:before{display:none!important}
 .aioff-auth-dock.is-on .aioff-auth-links{
   position:static!important;
   width:auto!important;height:auto!important;
-  padding:2px 0 0!important;margin:0!important;
+  padding:5px 0 0!important;margin:0!important;
   display:flex!important;align-items:center!important;justify-content:flex-end!important;
   background:transparent!important;border:0!important;border-radius:0!important;
   box-shadow:none!important;gap:0!important;
@@ -145,23 +292,53 @@ def _render_index_kobaco_v18():
 .aioff-auth-dock.is-on .aioff-auth-links span{display:none!important}
 .aioff-auth-dock.is-on .aioff-auth-links button,
 .aioff-auth-dock.is-on .aioff-auth-links button:first-of-type{
-  width:auto!important;height:auto!important;min-width:0!important;min-height:0!important;
-  padding:0!important;margin:0!important;border:0!important;border-radius:0!important;
-  background:transparent!important;color:#736d66!important;
-  font-size:8px!important;line-height:1.2!important;font-weight:700!important;
+  width:auto!important;height:30px!important;min-width:72px!important;min-height:30px!important;
+  padding:0 12px!important;margin:0!important;
+  border:1px solid #cfc7bc!important;border-radius:7px!important;
+  background:#f7f3ed!important;color:#514b45!important;
+  font-size:11px!important;line-height:1!important;font-weight:800!important;
   text-decoration:none!important;cursor:pointer!important;
 }
-.aioff-auth-dock.is-on .aioff-auth-links button:hover{text-decoration:underline!important}
+.aioff-auth-dock.is-on .aioff-auth-links button:hover{background:#eee8df!important}
 </style>
 <script>
 (() => {
+  /* 로그인 입력을 이메일이 아닌 별도 아이디로 전환 */
+  const loginPane=document.querySelector('[data-auth-pane="login"]');
+  const loginInput=loginPane?.querySelector('input[name="email"]');
+  if(loginInput){
+    loginInput.name='login_id';
+    loginInput.type='text';
+    loginInput.removeAttribute('pattern');
+    loginInput.removeAttribute('title');
+    loginInput.placeholder='아이디';
+    loginInput.autocomplete='username';
+    const label=loginInput.closest('.aioff-auth-field')?.querySelector('label');
+    if(label) label.textContent='아이디';
+  }
+
+  /* 회원가입: 이메일은 연락정보로 두고 로그인용 아이디 행을 별도 추가 */
+  const registerPane=document.querySelector('[data-auth-pane="register"]');
+  const registerEmail=registerPane?.querySelector('input[name="email"]');
+  if(registerEmail && !registerPane.querySelector('input[name="login_id"]')){
+    const emailField=registerEmail.closest('.aioff-auth-field');
+    const idField=document.createElement('div');
+    idField.className='aioff-auth-field';
+    idField.innerHTML='<label>아이디</label><input name="login_id" type="text" autocomplete="username" minlength="3" maxlength="30" required placeholder="로그인에 사용할 아이디">';
+    emailField?.insertAdjacentElement('afterend',idField);
+  }
+
   const input=document.getElementById('aioff-school-name');
   const code=document.getElementById('aioff-school-code');
   const region=document.getElementById('aioff-school-region');
   const level=document.getElementById('aioff-school-level');
   const box=document.getElementById('aioff-school-results');
   const note=document.getElementById('aioff-school-message');
-  if(!input||!code||!region||!level||!box) return;
+  const searchWrap=input?.closest('.aioff-school-search');
+  if(!input||!code||!region||!level||!box||!searchWrap) return;
+
+  /* 결과 박스를 입력창 래퍼 안으로 옮겨 실제 자동완성 드롭다운처럼 붙인다. */
+  if(box.parentElement!==searchWrap) searchWrap.appendChild(box);
 
   const esc18=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let timer=null;
@@ -251,7 +428,7 @@ def _render_index_kobaco_v18():
   },true);
 })();
 
-/* 회원가입 API는 세션 쿠키를 즉시 발급한다. 성공 문구가 뜨면 UI도 즉시 LOGIN ON으로 동기화한다. */
+/* 회원가입 성공 직후 발급된 세션을 읽어 LOGIN ON 상태로 즉시 동기화 */
 (() => {
   const message=document.getElementById('aioff-register-message');
   if(!message) return;
@@ -269,9 +446,7 @@ def _render_index_kobaco_v18():
       const state=dock.querySelector('.aioff-auth-state');
       if(state) state.textContent='LOGIN ON';
       const links=dock.querySelector('.aioff-auth-links');
-      if(links && !links.querySelector('[data-auth-logout]')){
-        links.innerHTML='<button type="button" data-auth-logout>로그아웃</button>';
-      }
+      if(links) links.innerHTML='<button type="button" data-auth-logout>로그아웃</button>';
     }catch(e){}
   }
 
