@@ -117,7 +117,7 @@ def _image_media(data: bytes, name: str = "") -> str | None:
         return "image/jpeg"
     if data.startswith(b"GIF8") or lower.endswith(".gif"):
         return "image/gif"
-    if data[:4] in (b"RIFF",) and b"WEBP" in data[:16] or lower.endswith(".webp"):
+    if (data[:4] == b"RIFF" and b"WEBP" in data[:16]) or lower.endswith(".webp"):
         return "image/webp"
     guessed = mimetypes.guess_type(name)[0] if name else None
     return guessed if guessed and guessed.startswith("image/") else None
@@ -236,7 +236,6 @@ def education_thumb_v19(case_id: str):
     result: tuple[bytes, str] | None = None
     attachments = _material_attachments(material_id)
 
-    # ZIP 안에 실제 JPG/PNG 학습 이미지가 있으면 우선 사용합니다.
     for item in attachments:
         path = _safe_local_path(str(item.get("local_path") or ""))
         if path and path.suffix.lower() == ".zip":
@@ -261,82 +260,32 @@ def _render_index_kobaco_v19():
     page = previous._render_index_kobaco_v18()
     patch = r'''
 <style>
-/* LOGIN 상태: OFF는 회색 점, ON은 파란 점 하나. 로그아웃은 상태 아래쪽으로 내린다. */
 .aioff-auth-state:before{display:none!important}
-.aioff-login-indicator{
-  display:inline-block;width:7px;height:7px;border-radius:50%;
-  flex:0 0 7px;background:#aaa39a;margin-right:6px;vertical-align:1px;
-}
+.aioff-login-indicator{display:inline-block;width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:#aaa39a;margin-right:6px;vertical-align:1px}
 .aioff-auth-dock.is-on .aioff-login-indicator{background:#2f75e8}
 .aioff-auth-state{display:inline-flex!important;align-items:center!important}
-.aioff-auth-dock.is-on .aioff-auth-links{
-  position:absolute!important;top:28px!important;right:0!important;
-  width:auto!important;height:auto!important;padding:0!important;margin:0!important;
-  display:flex!important;background:transparent!important;border:0!important;box-shadow:none!important;
-}
-.aioff-auth-dock.is-on .aioff-auth-links button,
-.aioff-auth-dock.is-on .aioff-auth-links button:first-of-type{
-  min-width:78px!important;height:34px!important;padding:0 13px!important;
-  border:1px solid #cfc7bc!important;border-radius:8px!important;
-  background:#f7f3ed!important;color:#514b45!important;font-size:11px!important;font-weight:800!important;
-}
+.aioff-auth-dock.is-on .aioff-auth-links{position:absolute!important;top:28px!important;right:0!important;width:auto!important;height:auto!important;padding:0!important;margin:0!important;display:flex!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.aioff-auth-dock.is-on .aioff-auth-links button,.aioff-auth-dock.is-on .aioff-auth-links button:first-of-type{min-width:78px!important;height:34px!important;padding:0 13px!important;border:1px solid #cfc7bc!important;border-radius:8px!important;background:#f7f3ed!important;color:#514b45!important;font-size:11px!important;font-weight:800!important}
 
-/* 학교 autocomplete는 select와 같은 높이/정렬을 사용 */
 .aioff-school-search.aioff-school-combobox{position:relative!important;display:block!important;width:100%!important}
-.aioff-school-search.aioff-school-combobox:after{
-  content:"";position:absolute;right:16px;top:20px;width:7px;height:7px;
-  border-right:1.5px solid #302c28;border-bottom:1.5px solid #302c28;
-  transform:rotate(45deg);pointer-events:none;z-index:3;
-}
+.aioff-school-search.aioff-school-combobox:after{content:"";position:absolute;right:16px;top:20px;width:7px;height:7px;border-right:1.5px solid #302c28;border-bottom:1.5px solid #302c28;transform:rotate(45deg);pointer-events:none;z-index:3}
 .aioff-school-search.aioff-school-combobox.is-open:after{transform:translateY(4px) rotate(225deg)}
-#aioff-school-name{
-  width:100%!important;height:42px!important;min-height:42px!important;box-sizing:border-box!important;
-  padding:0 42px 0 12px!important;margin:0!important;line-height:40px!important;border-radius:8px!important;background:#fff!important;
-}
-.aioff-school-search.aioff-school-combobox.is-open #aioff-school-name{
-  border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;border-color:#bdb4a9!important;
-}
-#aioff-school-results{
-  left:0!important;right:0!important;top:41px!important;width:100%!important;box-sizing:border-box!important;
-  margin:0!important;max-height:250px!important;padding:0!important;overflow-y:auto!important;
-  border:1px solid #bdb4a9!important;border-top:0!important;border-radius:0 0 8px 8px!important;
-  background:#fff!important;box-shadow:0 9px 22px rgba(35,29,23,.14)!important;
-}
-#aioff-school-results:not(.open){display:none!important}#aioff-school-results.open{display:block!important}
-#aioff-school-results.open:before{display:none!important}
-#aioff-school-results .aioff-school-result{
-  display:block!important;width:100%!important;min-height:48px!important;box-sizing:border-box!important;
-  margin:0!important;padding:8px 12px!important;border:0!important;border-bottom:1px solid #ece5dc!important;
-  border-radius:0!important;background:#fff!important;text-align:left!important;color:#2f2b27!important;line-height:1.25!important;
-}
+#aioff-school-name{width:100%!important;height:42px!important;min-height:42px!important;box-sizing:border-box!important;padding:0 42px 0 12px!important;margin:0!important;line-height:40px!important;border-radius:8px!important;background:#fff!important}
+.aioff-school-search.aioff-school-combobox.is-open #aioff-school-name{border-bottom-left-radius:0!important;border-bottom-right-radius:0!important;border-color:#bdb4a9!important}
+#aioff-school-results{left:0!important;right:0!important;top:41px!important;width:100%!important;box-sizing:border-box!important;margin:0!important;max-height:250px!important;padding:0!important;overflow-y:auto!important;border:1px solid #bdb4a9!important;border-top:0!important;border-radius:0 0 8px 8px!important;background:#fff!important;box-shadow:0 9px 22px rgba(35,29,23,.14)!important}
+#aioff-school-results:not(.open){display:none!important}#aioff-school-results.open{display:block!important}#aioff-school-results.open:before{display:none!important}
+#aioff-school-results .aioff-school-result{display:block!important;width:100%!important;min-height:48px!important;box-sizing:border-box!important;margin:0!important;padding:8px 12px!important;border:0!important;border-bottom:1px solid #ece5dc!important;border-radius:0!important;background:#fff!important;text-align:left!important;color:#2f2b27!important;line-height:1.25!important}
 #aioff-school-results .aioff-school-result:hover,#aioff-school-results .aioff-school-result.is-active{background:#f2f5fa!important}
-#aioff-school-results .aioff-school-result b{display:block!important;margin:0 0 3px!important;font-size:12px!important}
-#aioff-school-results .aioff-school-result small{display:block!important;margin:0!important;font-size:10px!important;color:#756e67!important}
+#aioff-school-results .aioff-school-result b{display:block!important;margin:0 0 3px!important;font-size:12px!important}#aioff-school-results .aioff-school-result small{display:block!important;margin:0!important;font-size:10px!important;color:#756e67!important}
 
-/* 교육자료 선택 카드: 실제 원문 이미지 썸네일 */
-.education-guide-preview-v19{
-  height:142px;margin:-10px -10px 9px;position:relative;overflow:hidden;border-radius:7px;background:#e8edf5;border:1px solid #d3dbe7;
-}
+.education-guide-preview-v19{height:142px;margin:-10px -10px 9px;position:relative;overflow:hidden;border-radius:7px;background:#e8edf5;border:1px solid #d3dbe7}
 .education-guide-preview-v19 img{width:100%;height:100%;display:block;object-fit:cover;background:#eef3fb}
-.education-guide-preview-v19 .edu-chip{
-  position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);padding:4px 7px;border-radius:6px;
-  background:rgba(22,31,43,.78);color:#fff;font-size:8px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-
-/* 교육자료 학습 화면: 메타정보보다 실제 자료를 먼저 보여준다. */
-.education-learning-card{border:1px solid #d9d2c9;border-radius:9px;background:#fff;overflow:hidden}
-.education-learning-head{padding:13px 15px;background:#f7f9fc;border-bottom:1px solid #dfe5ee}
-.education-learning-head small{display:block;font-size:8px;color:#66758a;margin-bottom:4px}.education-learning-head b{font-size:14px;line-height:1.4}
-.education-document-shell{height:clamp(430px,63vh,720px);background:#3b3b3b;border-bottom:1px solid #ded8d0}
-.education-document-shell iframe{display:block;width:100%;height:100%;border:0;background:#3b3b3b}
-.education-learning-task{padding:14px 16px;background:#fff8ef;border-bottom:1px solid #eadfce}
-.education-learning-task small{display:block;font-size:9px;color:#8a6b4f;font-weight:900;margin-bottom:5px}
-.education-learning-task b{display:block;font-size:12px;line-height:1.55;color:#332b25}
-.education-learning-meta{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;background:#faf8f4;border-bottom:1px solid #e7e0d7}
-.education-learning-meta span{padding:5px 8px;border:1px solid #ded6cb;border-radius:999px;background:#fff;font-size:9px;color:#645c54}
-.education-learning-actions{display:flex;gap:8px;padding:10px 14px 13px;flex-wrap:wrap}
-.education-learning-actions a{display:inline-flex;padding:7px 10px;border-radius:7px;text-decoration:none;font-size:9px;font-weight:850;background:#26221f;color:#fff!important}
-.education-learning-actions a.alt{background:#fff;color:#2d2925!important;border:1px solid #cfc6ba}
+.education-guide-preview-v19 .edu-chip{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);padding:4px 7px;border-radius:6px;background:rgba(22,31,43,.78);color:#fff;font-size:8px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.education-learning-card{border:1px solid #d9d2c9;border-radius:9px;background:#fff;overflow:hidden}.education-learning-head{padding:13px 15px;background:#f7f9fc;border-bottom:1px solid #dfe5ee}.education-learning-head small{display:block;font-size:8px;color:#66758a;margin-bottom:4px}.education-learning-head b{font-size:14px;line-height:1.4}
+.education-document-shell{height:clamp(430px,63vh,720px);background:#3b3b3b;border-bottom:1px solid #ded8d0}.education-document-shell iframe{display:block;width:100%;height:100%;border:0;background:#3b3b3b}
+.education-learning-task{padding:14px 16px;background:#fff8ef;border-bottom:1px solid #eadfce}.education-learning-task small{display:block;font-size:9px;color:#8a6b4f;font-weight:900;margin-bottom:5px}.education-learning-task b{display:block;font-size:12px;line-height:1.55;color:#332b25}
+.education-learning-meta{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;background:#faf8f4;border-bottom:1px solid #e7e0d7}.education-learning-meta span{padding:5px 8px;border:1px solid #ded6cb;border-radius:999px;background:#fff;font-size:9px;color:#645c54}
+.education-learning-actions{display:flex;gap:8px;padding:10px 14px 13px;flex-wrap:wrap}.education-learning-actions a{display:inline-flex;padding:7px 10px;border-radius:7px;text-decoration:none;font-size:9px;font-weight:850;background:#26221f;color:#fff!important}.education-learning-actions a.alt{background:#fff;color:#2d2925!important;border:1px solid #cfc6ba}
 @media(max-width:700px){.education-document-shell{height:56vh;min-height:380px}}
 </style>
 <script>
@@ -351,9 +300,7 @@ def _render_index_kobaco_v19():
     }
     if(!state.querySelector('.aioff-login-indicator')){
       const dot=document.createElement('span');
-      dot.className='aioff-login-indicator';
-      dot.setAttribute('aria-hidden','true');
-      state.prepend(dot);
+      dot.className='aioff-login-indicator';dot.setAttribute('aria-hidden','true');state.prepend(dot);
     }
   }
 
@@ -361,64 +308,39 @@ def _render_index_kobaco_v19():
   const schoolWrap=schoolInput?.closest('.aioff-school-search');
   const schoolBox=document.getElementById('aioff-school-results');
   if(schoolInput&&schoolWrap&&schoolBox){
-    schoolWrap.classList.add('aioff-school-combobox');
-    schoolInput.setAttribute('autocomplete','off');
-    schoolInput.setAttribute('role','combobox');
-    schoolInput.setAttribute('aria-autocomplete','list');
-    schoolInput.setAttribute('aria-controls','aioff-school-results');
-    schoolInput.setAttribute('spellcheck','false');
-    function syncOpen(){
-      const open=schoolBox.classList.contains('open');
-      schoolWrap.classList.toggle('is-open',open);
-      schoolInput.setAttribute('aria-expanded',open?'true':'false');
-    }
-    syncOpen();
-    new MutationObserver(syncOpen).observe(schoolBox,{attributes:true,attributeFilter:['class']});
+    schoolWrap.classList.add('aioff-school-combobox');schoolInput.setAttribute('autocomplete','off');schoolInput.setAttribute('role','combobox');schoolInput.setAttribute('aria-autocomplete','list');schoolInput.setAttribute('aria-controls','aioff-school-results');schoolInput.setAttribute('spellcheck','false');
+    function syncOpen(){const open=schoolBox.classList.contains('open');schoolWrap.classList.toggle('is-open',open);schoolInput.setAttribute('aria-expanded',open?'true':'false')}
+    syncOpen();new MutationObserver(syncOpen).observe(schoolBox,{attributes:true,attributeFilter:['class']});
   }
 
   const educationPool19=Array.isArray(fixedTopicCases?.deepfake)?[...fixedTopicCases.deepfake]:[];
-
   function strictLevelMatch(c,user){
     const target=String(c?.education_target||'').replace(/\s+/g,'');
     const level=user?.school_level||'';
-    const hasElementary=/(초등|초등학생|초등학교|초)/.test(target);
-    const hasMiddle=/(중등|중학생|중학교|중)/.test(target);
-    const hasHigh=/(고등|고등학생|고등학교|고)/.test(target);
+    const hasElementary=/(초등|초등학생|초등학교)/.test(target)||target==='초';
+    const hasMiddle=/(중등|중학생|중학교)/.test(target)||target==='중';
+    const hasHigh=/(고등|고등학생|고등학교)/.test(target)||target==='고';
     const hasParent=/(학부모|보호자|교사|교직원)/.test(target);
-    if(level==='초') return hasElementary && !hasMiddle && !hasHigh && !hasParent;
-    if(level==='중') return hasMiddle && !hasElementary && !hasHigh && !hasParent;
-    if(level==='고') return hasHigh && !hasElementary && !hasMiddle && !hasParent;
+    if(level==='초') return hasElementary&&!hasMiddle&&!hasHigh&&!hasParent;
+    if(level==='중') return hasMiddle&&!hasElementary&&!hasHigh&&!hasParent;
+    if(level==='고') return hasHigh&&!hasElementary&&!hasMiddle&&!hasParent;
     return false;
   }
-
   function gradePriority(c,user){
-    const text=`${c?.education_target||''} ${c?.title||''}`;
-    const grade=Number(user?.grade||0);
-    if(user?.school_level==='초'){
-      if(grade<=3 && /(저학년|1.?3학년|1~3학년)/.test(text)) return 6;
-      if(grade>=4 && /(고학년|4.?6학년|4~6학년)/.test(text)) return 6;
-      if(/초등/.test(text)) return 3;
-    }
-    if(user?.school_level==='중' && /(중등|중학생|중학교)/.test(text)) return 3;
-    if(user?.school_level==='고' && /(고등|고등학생|고등학교)/.test(text)) return 3;
+    const text=`${c?.education_target||''} ${c?.title||''}`;const grade=Number(user?.grade||0);
+    if(user?.school_level==='초'){if(grade<=3&&/(저학년|1.?3학년|1~3학년)/.test(text))return 6;if(grade>=4&&/(고학년|4.?6학년|4~6학년)/.test(text))return 6;if(/초등/.test(text))return 3}
+    if(user?.school_level==='중'&&/(중등|중학생|중학교)/.test(text))return 3;
+    if(user?.school_level==='고'&&/(고등|고등학생|고등학교)/.test(text))return 3;
     return 1;
   }
-
   const chooserBeforeV19=window.showCaseChooser;
   window.showCaseChooser=async function(lessonId){
-    if(lessonId!=='deepfake') return chooserBeforeV19(lessonId);
+    if(lessonId!=='deepfake')return chooserBeforeV19(lessonId);
     try{
-      const r=await fetch('/api/auth/me',{credentials:'same-origin'});
-      const data=r.ok?await r.json():{};
-      const user=data.logged_in?data.user:null;
+      const r=await fetch('/api/auth/me',{credentials:'same-origin'});const data=r.ok?await r.json():{};const user=data.logged_in?data.user:null;
       if(user){
-        const strict=educationPool19
-          .filter(c=>strictLevelMatch(c,user))
-          .map((c,i)=>({c,i,s:gradePriority(c,user)}))
-          .sort((a,b)=>b.s-a.s||a.i-b.i)
-          .map(x=>x.c);
-        fixedTopicCases.deepfake=strict;
-        delete fixedSamples.deepfake;
+        const strict=educationPool19.filter(c=>strictLevelMatch(c,user)).map((c,i)=>({c,i,s:gradePriority(c,user)})).sort((a,b)=>b.s-a.s||a.i-b.i).map(x=>x.c);
+        fixedTopicCases.deepfake=strict;delete fixedSamples.deepfake;
       }
     }catch(e){}
     return chooserBeforeV19(lessonId);
@@ -426,27 +348,18 @@ def _render_index_kobaco_v19():
 
   const previewBeforeV19=window.fixedPreview;
   window.fixedPreview=function(c){
-    const id=String(c?.id||'');
-    if(!id.startsWith('education_')) return previewBeforeV19(c);
-    const target=c.education_target||'';
-    const year=c.education_year||'';
+    const id=String(c?.id||'');if(!id.startsWith('education_'))return previewBeforeV19(c);
+    const target=c.education_target||'';const year=c.education_year||'';
     return `<div class="education-guide-preview-v19"><img src="/api/education-thumb/${encodeURIComponent(id)}" alt="${esc(c.title||'교육자료')} 썸네일" loading="lazy"><span class="edu-chip">${esc([target,year].filter(Boolean).join(' · '))}</span></div>`;
   };
 
   const mediaBeforeV19=window.caseMedia;
   window.caseMedia=function(c){
-    const id=String(c?.id||'');
-    if(!id.startsWith('education_')) return mediaBeforeV19(c);
+    const id=String(c?.id||'');if(!id.startsWith('education_'))return mediaBeforeV19(c);
     const rows={};(c.data_rows||[]).forEach(r=>rows[String(r.label||'')]=String(r.value||''));
     const question=c.opening_question||(Array.isArray(c.opening_questions)?c.opening_questions[0]:'')||'자료를 직접 보고, 가장 먼저 확인되는 사실과 자신의 생각을 구분해 적어보세요.';
     const source=c.source_url?`<a class="alt" href="${esc(c.source_url)}" target="_blank" rel="noopener">공식 자료 페이지 ↗</a>`:'';
-    return `<div class="chat-case-media"><div class="education-learning-card">
-      <div class="education-learning-head"><small>리터러시 교육 안내서 · 실제 원문 학습</small><b>${esc(c.title||'디지털윤리 교육자료')}</b></div>
-      <div class="education-document-shell"><iframe src="/api/education-file/${encodeURIComponent(id)}#view=FitH" title="${esc(c.title||'교육자료')} 원문"></iframe></div>
-      <div class="education-learning-task"><small>자료를 보면서 생각해보세요</small><b>${esc(question)}</b></div>
-      <div class="education-learning-meta"><span>대상 ${esc(rows['대상']||'-')}</span><span>${esc(rows['연도']||'연도 -')}</span><span>${esc(rows['자료유형']||'자료유형 -')}</span></div>
-      <div class="education-learning-actions"><a href="/api/education-file/${encodeURIComponent(id)}" target="_blank" rel="noopener">원문 크게 보기 ↗</a>${source}</div>
-    </div></div>`;
+    return `<div class="chat-case-media"><div class="education-learning-card"><div class="education-learning-head"><small>리터러시 교육 안내서 · 실제 원문 학습</small><b>${esc(c.title||'디지털윤리 교육자료')}</b></div><div class="education-document-shell"><iframe src="/api/education-file/${encodeURIComponent(id)}#view=FitH" title="${esc(c.title||'교육자료')} 원문"></iframe></div><div class="education-learning-task"><small>자료를 보면서 생각해보세요</small><b>${esc(question)}</b></div><div class="education-learning-meta"><span>대상 ${esc(rows['대상']||'-')}</span><span>${esc(rows['연도']||'연도 -')}</span><span>${esc(rows['자료유형']||'자료유형 -')}</span></div><div class="education-learning-actions"><a href="/api/education-file/${encodeURIComponent(id)}" target="_blank" rel="noopener">원문 크게 보기 ↗</a>${source}</div></div></div>`;
   };
 })();
 </script>
