@@ -8,7 +8,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/aioff
 EnvironmentFile=-/opt/aioff/.env
-ExecStart=/opt/aioff/.venv/bin/uvicorn aioff_runtime:app --host 0.0.0.0 --port 3000
+ExecStart=/opt/aioff/.venv/bin/uvicorn news_learning:app --host 0.0.0.0 --port 3000
 Restart=always
 RestartSec=3
 
