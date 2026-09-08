@@ -1,46 +1,48 @@
-# AI OFF 교육자료 DB + 최신 뉴스 DB
+# AI OFF 교육자료 DB + 뉴스 DB
 
-## 목적
+## 현재 기준
 
-기존 KOBACO DB는 그대로 유지한다. 새 DB는 별도로 구성한다.
+기존 KOBACO DB는 그대로 유지하고 교육자료/뉴스 DB는 분리한다.
 
-- `data/education/education.db`: 디지털윤리.kr 초등·중등·고등 교육자료 메타데이터, 첨부파일, PDF 텍스트 chunk, embedding
-- `data/news/news.db`: 최신 뉴스 메타데이터, topic tags, embedding, 연령별 교육자료 연결 결과
-- 두 DB는 `link_news_education.py`에서 embedding similarity로 연결한다.
+- `data/education/education.db`: 공식 디지털 리터러시 교육자료 메타데이터, 첨부파일, chunk, embedding
+- `data/news/news.db`: 뉴스 메타데이터/embedding/교육자료 연결용 DB
+- 교육자료와 뉴스의 실제 연결은 같은 embedding 모델·차원을 사용한다.
 
-## 교육자료 수집 원칙
+## 교육자료 canonical pipeline
 
-`https://xn--2z1b40gs9nlqcf0n.kr/front/archive/archiveMainList.do` 전체 페이지를 순회한 뒤 `대상`에 `초등`, `중등`, `고등`이 포함된 자료만 선택한다. 숫자 131/133을 코드에 고정하지 않는다. 사이트 실제 결과를 매 실행 시 기록한다.
-
-원문 파일은 `data/education/files/`에 저장하고 Git에는 올리지 않는다. PDF/TXT와 ZIP 안의 PDF/TXT는 텍스트 chunk를 만든다. HWP/PPT 등 미지원 형식은 메타데이터/원본 파일은 보존하되 `unsupported`로 기록한다.
-
-## Vector/RAG
-
-기본 embedding model은 `gemini-embedding-001`, 768차원이다. 교육자료와 뉴스 모두 같은 모델·차원으로 임베딩해야 cosine similarity가 유효하다. `GEMINI_EMBED_MODEL`로 변경할 수 있지만 모델을 변경하면 두 DB를 함께 재임베딩해야 한다.
-
-## 실행
-
-먼저 파서 검증:
+교육자료 원본을 다시 구축해야 할 때만 아래 순서로 명시적으로 실행한다.
 
 ```bash
 cd /opt/aioff
-git pull --ff-only origin main
-.venv/bin/pip install -r requirements.txt
+.venv/bin/python download_education_sources.py --rebuild-db
+.venv/bin/python extract_education_sources.py
+.venv/bin/python embed_education_db.py
+```
+
+일상적인 배포에서는 위 재구축 명령을 실행하지 않는다. 특히 embedding이 진행 중일 때 `education.db`를 다시 만들거나 chunk를 초기화하지 않는다.
+
+현재 DB 상태만 확인:
+
+```bash
 bash build_rag_data.sh validate
 ```
 
-검증 결과의 전체 자료 수와 초·중·고 선택 자료 수가 정상일 때 전체 구축:
+기존 chunk의 미완료 embedding만 이어서 수행:
 
 ```bash
-bash build_rag_data.sh build
+bash build_rag_data.sh education-embed
 ```
 
-뉴스만 갱신:
+`embed_education_db.py`는 이미 저장된 embedding을 건너뛰어 재개한다.
 
-```bash
-bash build_rag_data.sh refresh-news
-```
+## 수집/추출 구성
 
-## 하드 게이트
+- `education_archive_parser.py`: 공식 자료실 목록/첨부 링크 파싱 전용 helper
+- `download_education_sources.py`: 대상 자료와 첨부 원본 수집
+- `extract_education_sources.py`: 원본에서 text chunk 생성
+- `embed_education_db.py`: `gemini-embedding-001`, 768차원 embedding 저장
+- `education_db.py`: SQLite schema/search/vector 저장
 
-`build_education_db.py`는 전체 파싱이 250건 미만 또는 초·중·고 자료가 80건 미만이면 DB/다운로드 전에 중단한다. 사이트 구조가 바뀌었는데 잘못된 DB를 만드는 것을 막기 위한 장치다.
+## 뉴스
+
+현재 운영용 뉴스 파이프라인은 2026년 수집본의 사건 단위 정제/교육자료 매칭 단계가 진행 중이다. 예전 14일 probe 방식은 폐기했다. `build_rag_data.sh`에서 뉴스 DB를 자동 재구축하지 않는다.
