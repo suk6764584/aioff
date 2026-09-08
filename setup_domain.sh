@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-DOMAIN="${AIOFF_DOMAIN:-aioff-49-50-128-224.sslip.io}"
+DOMAIN="${AIOFF_DOMAIN:-aioff-ai.duckdns.org}"
 UPSTREAM="127.0.0.1:3000"
 NGINX_SITE="/etc/nginx/sites-available/aioff"
 
