@@ -112,6 +112,7 @@ def _render_index_kobaco_v14():
 .aioff-auth-tabs{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #ded7cd}.aioff-auth-tab{padding:11px;border:0;background:#eee9e1;color:#6e6760;font-weight:800;cursor:pointer}.aioff-auth-tab.active{background:#fff;color:#171513}
 .aioff-auth-pane{display:none;padding:18px 20px 20px;background:#fff}.aioff-auth-pane.active{display:block}
 .aioff-auth-form{display:grid;gap:10px}.aioff-auth-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.aioff-auth-field{display:grid;gap:5px}.aioff-auth-field label{font-size:9px;font-weight:800;color:#5e5852}.aioff-auth-field input,.aioff-auth-field select{width:100%;box-sizing:border-box;border:1px solid #cec7bd;border-radius:6px;background:#fff;padding:9px 10px;font-size:11px;color:#171513;outline:none}.aioff-auth-field input:focus,.aioff-auth-field select:focus{border-color:#2f75e8;box-shadow:0 0 0 2px rgba(47,117,232,.10)}
+.aioff-phone-group{display:grid;grid-template-columns:58px 8px 1fr 8px 1fr;align-items:center;gap:4px}.aioff-phone-group span{text-align:center;color:#8a8279;font-size:10px}.aioff-phone-group input{text-align:center}.aioff-phone-prefix{background:#f2eee8!important;color:#5f5952!important;font-weight:800}
 .aioff-auth-submit{border:0;border-radius:6px;background:#22201d;color:#fff;padding:10px 12px;font-weight:850;font-size:11px;cursor:pointer}.aioff-auth-submit:hover{background:#111}
 .aioff-auth-note{font-size:9px;line-height:1.5;color:#777067}.aioff-auth-message{min-height:15px;font-size:9px;color:#bf4b2e}.aioff-auth-message.ok{color:#1a6d49}
 .aioff-school-search{display:grid;grid-template-columns:1fr auto;gap:6px}.aioff-school-search button{border:1px solid #cfc7bc;background:#f6f1e9;border-radius:6px;padding:0 11px;font-size:9px;font-weight:800;cursor:pointer}.aioff-school-results{display:none;border:1px solid #d9d1c7;border-radius:6px;overflow:hidden;max-height:145px;overflow-y:auto}.aioff-school-results.open{display:block}.aioff-school-result{display:block;width:100%;border:0;border-bottom:1px solid #eee8e0;background:#fff;text-align:left;padding:8px 9px;cursor:pointer}.aioff-school-result:last-child{border-bottom:0}.aioff-school-result b{display:block;font-size:10px}.aioff-school-result small{display:block;color:#7e766e;font-size:8px;margin-top:2px}
@@ -127,7 +128,7 @@ def _render_index_kobaco_v14():
     <div class="aioff-auth-tabs"><button type="button" class="aioff-auth-tab active" data-auth-tab="login">로그인</button><button type="button" class="aioff-auth-tab" data-auth-tab="register">회원가입</button></div>
     <div class="aioff-auth-pane active" data-auth-pane="login">
       <form id="aioff-login-form" class="aioff-auth-form">
-        <div class="aioff-auth-field"><label>이메일</label><input name="email" type="email" autocomplete="email" required placeholder="student@example.com"></div>
+        <div class="aioff-auth-field"><label>이메일</label><input name="email" type="email" autocomplete="email" required pattern="[^@\s]+@[^@\s]+\.[^@\s]+" title="example@example.com 형식으로 입력해 주세요." placeholder="student@example.com"></div>
         <div class="aioff-auth-field"><label>비밀번호</label><input name="password" type="password" autocomplete="current-password" required placeholder="비밀번호"></div>
         <div id="aioff-login-message" class="aioff-auth-message"></div>
         <button class="aioff-auth-submit" type="submit">LOGIN</button>
@@ -135,8 +136,11 @@ def _render_index_kobaco_v14():
     </div>
     <div class="aioff-auth-pane" data-auth-pane="register">
       <form id="aioff-register-form" class="aioff-auth-form">
-        <div class="aioff-auth-row"><div class="aioff-auth-field"><label>이름</label><input name="name" required maxlength="30"></div><div class="aioff-auth-field"><label>전화번호</label><input name="phone" type="tel" required placeholder="010-0000-0000"></div></div>
-        <div class="aioff-auth-field"><label>이메일</label><input name="email" type="email" autocomplete="email" required placeholder="student@example.com"></div>
+        <div class="aioff-auth-row">
+          <div class="aioff-auth-field"><label>이름</label><input name="name" required maxlength="30"></div>
+          <div class="aioff-auth-field"><label>전화번호</label><div class="aioff-phone-group"><input class="aioff-phone-prefix" id="aioff-phone-1" type="text" value="010" readonly aria-label="전화번호 앞자리"><span>-</span><input id="aioff-phone-2" type="text" inputmode="numeric" autocomplete="tel-local-prefix" required minlength="4" maxlength="4" pattern="[0-9]{4}" aria-label="전화번호 가운데 4자리"><span>-</span><input id="aioff-phone-3" type="text" inputmode="numeric" autocomplete="tel-local-suffix" required minlength="4" maxlength="4" pattern="[0-9]{4}" aria-label="전화번호 마지막 4자리"></div><input name="phone" id="aioff-phone-value" type="hidden"></div>
+        </div>
+        <div class="aioff-auth-field"><label>이메일</label><input name="email" type="email" autocomplete="email" required pattern="[^@\s]+@[^@\s]+\.[^@\s]+" title="example@example.com 형식으로 입력해 주세요." placeholder="student@example.com"></div>
         <div class="aioff-auth-field"><label>비밀번호</label><input name="password" type="password" autocomplete="new-password" minlength="6" required placeholder="6자 이상"></div>
         <div class="aioff-auth-row"><div class="aioff-auth-field"><label>지역</label><select name="school_region" id="aioff-school-region" required><option value="">지역 선택</option><option>서울</option><option>부산</option><option>대구</option><option>인천</option><option>광주</option><option>대전</option><option>울산</option><option>세종</option><option>경기</option><option>강원</option><option>충북</option><option>충남</option><option>전북</option><option>전남</option><option>경북</option><option>경남</option><option>제주</option></select></div><div class="aioff-auth-field"><label>학교급</label><select name="school_level" id="aioff-school-level" required><option value="">학교급 선택</option><option value="초">초등</option><option value="중">중등</option><option value="고">고등</option></select></div></div>
         <div class="aioff-auth-field"><label>학교</label><div class="aioff-school-search"><input name="school_name" id="aioff-school-name" required placeholder="학교명을 입력하고 검색"><button type="button" id="aioff-school-search-btn">학교 검색</button></div><input name="school_code" id="aioff-school-code" type="hidden"><div id="aioff-school-results" class="aioff-school-results"></div><div id="aioff-school-message" class="aioff-auth-note">지역과 학교급을 고른 뒤 학교명을 검색할 수 있습니다.</div></div>
@@ -230,6 +234,14 @@ def _render_index_kobaco_v14():
     try{const data=await api('/api/auth/login',{method:'POST',body:JSON.stringify(values)});authUser=data.user;msg.textContent='로그인되었습니다.';msg.classList.add('ok');renderDock();setTimeout(closeAuth,250);}catch(err){msg.textContent=err.message;}
   });
 
+  const phone2=document.getElementById('aioff-phone-2');
+  const phone3=document.getElementById('aioff-phone-3');
+  const phoneValue=document.getElementById('aioff-phone-value');
+  function digitsOnly(input){input.value=input.value.replace(/\D/g,'').slice(0,4);}
+  phone2.addEventListener('input',()=>{digitsOnly(phone2);if(phone2.value.length===4)phone3.focus();});
+  phone3.addEventListener('input',()=>digitsOnly(phone3));
+  phone3.addEventListener('keydown',e=>{if(e.key==='Backspace'&&!phone3.value){phone2.focus();}});
+
   const level=document.getElementById('aioff-school-level');
   const region=document.getElementById('aioff-school-region');
   const grade=document.getElementById('aioff-grade');
@@ -257,6 +269,9 @@ def _render_index_kobaco_v14():
 
   document.getElementById('aioff-register-form').addEventListener('submit',async e=>{
     e.preventDefault(); const form=e.currentTarget; const msg=document.getElementById('aioff-register-message'); msg.textContent=''; msg.classList.remove('ok');
+    digitsOnly(phone2); digitsOnly(phone3);
+    if(phone2.value.length!==4||phone3.value.length!==4){msg.textContent='전화번호 가운데/마지막 번호를 숫자 4자리씩 입력해 주세요.';return;}
+    phoneValue.value=`010${phone2.value}${phone3.value}`;
     const values=Object.fromEntries(new FormData(form)); values.grade=Number(values.grade||0);
     try{const data=await api('/api/auth/register',{method:'POST',body:JSON.stringify(values)});authUser=data.user;msg.textContent='회원가입이 완료되었습니다.';msg.classList.add('ok');renderDock();setTimeout(closeAuth,350);}catch(err){msg.textContent=err.message;}
   });
