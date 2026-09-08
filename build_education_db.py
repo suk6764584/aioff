@@ -154,12 +154,23 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
     for page in range(1, max_pages + 1):
         r = session.get(LIST_URL, params={"pageIndex": page}, timeout=30)
         r.raise_for_status()
-        soup = BeautifulSoup(r.text, "html.parser")
+        # Parse raw bytes so BeautifulSoup can honor the page's own charset metadata.
+        # requests.text may otherwise default to ISO-8859-1 and corrupt Korean labels.
+        soup = BeautifulSoup(r.content, "html.parser")
         cards = material_containers(soup)
         rows = [parse_card(c, page) for c in cards]
         rows = [x for x in rows if x.get("title")]
         signature = tuple(x["source_key"] for x in rows)
         if not rows:
+            if page == 1:
+                page_text = norm(soup.get_text(" ", strip=True))
+                print(
+                    "DEBUG: first page produced no rows; "
+                    f"status={r.status_code}, bytes={len(r.content)}, "
+                    f"requests_encoding={r.encoding!r}, apparent_encoding={r.apparent_encoding!r}, "
+                    f"has_education_room={'교육자료실' in page_text}, has_year_label={'제작년도' in page_text}",
+                    file=sys.stderr,
+                )
             break
         if signature == previous_signature:
             break
