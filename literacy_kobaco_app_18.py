@@ -143,6 +143,7 @@ def _render_index_kobaco_v18():
   const note=document.getElementById('aioff-school-message');
   if(!input||!code||!region||!level||!box) return;
 
+  const esc18=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   let timer=null;
   let seq=0;
   let activeIndex=-1;
@@ -165,7 +166,7 @@ def _render_index_kobaco_v18():
       setNote(message||'검색 결과가 없습니다. 입력한 학교명을 그대로 사용할 수 있습니다.');
       return;
     }
-    box.innerHTML=currentItems.map((x,i)=>`<button type="button" class="aioff-school-result" data-i="${i}"><b>${escapeHtml(x.name||'')}</b><small>${escapeHtml(x.address||'')}</small></button>`).join('');
+    box.innerHTML=currentItems.map((x,i)=>`<button type="button" class="aioff-school-result" data-i="${i}"><b>${esc18(x.name||'')}</b><small>${esc18(x.address||'')}</small></button>`).join('');
     box.classList.add('open');
     setNote(message||`${currentItems.length}개 학교`);
     box.querySelectorAll('[data-i]').forEach(btn=>btn.addEventListener('mousedown',e=>{
