@@ -25,7 +25,7 @@ LIST_URL = BASE_URL + "/front/archive/archiveMainList.do"
 DEFAULT_TARGETS = ("초등", "중등", "고등")
 USER_AGENT = "AI-OFF-Education-RAG/1.0 (+https://aioff-ai.duckdns.org/)"
 
-_EXT_RE = re.compile(r"\.(pdf|zip|hwp|hwpx|doc|docx|ppt|pptx|xls|xlsx|txt)(?:$|\?)", re.I)
+_EXT_RE = re.compile(r"\.(pdf|zip|hwp|hwpx|doc|docx|ppt|pptx|xls|xlsx|txt|mp4)(?:$|\?)", re.I)
 
 
 def norm(text: str) -> str:
@@ -54,6 +54,25 @@ def value_from_text(text: str, label: str, next_label: str) -> str:
     return norm(m.group(1)) if m else ""
 
 
+def infer_target_from_title(title: str) -> tuple[str, str]:
+    """Infer a school target only when the title explicitly names it.
+
+    This is used for legacy archive rows whose `대상` field is blank.  The source
+    metadata is preserved separately; no target is inferred from topic or model
+    knowledge.
+    """
+    t = norm(title)
+    if re.search(r"(?:중고등|중·고등|중고등학교|중고등용)", t):
+        return "중등 / 고등", "title"
+    if re.search(r"(?:초등학교|초등용|\[초등\]|\(초등\))", t):
+        return "초등", "title"
+    if re.search(r"(?:중학교|중등용|\[중등\]|\(중등\))", t):
+        return "중등", "title"
+    if re.search(r"(?:고등학교|고등용|\[고등\]|\(고등\))", t):
+        return "고등", "title"
+    return "", ""
+
+
 def _is_single_material_container(node) -> bool:
     lines = lines_of(node)
     return (
@@ -65,20 +84,10 @@ def _is_single_material_container(node) -> bool:
 
 
 def material_containers(soup: BeautifulSoup):
-    """Return one complete list-view container per material.
-
-    The site's metadata block and thumbnail/title live in sibling DOM branches.
-    Starting from `제작년도` finds the metadata-only block (12 candidates) but
-    that block has no title, so parse_card rejects every row. Start from the
-    thumbnail image instead and walk upward until the first ancestor containing
-    exactly one complete metadata set. This yields the full list item.
-    """
+    """Return one complete list-view container per material."""
     seen: set[int] = set()
     containers = []
 
-    # Preferred path: each list-view material has an image with the material
-    # title in alt text. The gallery view does not contain 제작년도, so the
-    # metadata-count gate naturally excludes duplicate gallery cards.
     for img in soup.find_all("img", alt=True):
         if not norm(img.get("alt") or ""):
             continue
@@ -101,7 +110,6 @@ def material_containers(soup: BeautifulSoup):
     if containers:
         return containers
 
-    # Fallback for a future markup change where list thumbnails disappear.
     label_re = re.compile(r"^(?:대상|제작년도|자료유형|주제)$")
     for text_node in soup.find_all(string=lambda s: bool(s and label_re.search(norm(str(s))))):
         node = text_node.parent
@@ -145,9 +153,9 @@ def parse_card(card, page_index: int) -> dict:
     if not all(label in full_text for label in ("대상", "제작년도", "자료유형", "주제")):
         return {}
 
-    # Image alt is the canonical list-view title.
     img = card.find("img", alt=True)
     title = norm(img.get("alt") if img else "")
+    img_src = norm(img.get("src") if img else "")
     if not title:
         try:
             target_idx = lines.index("대상")
@@ -156,7 +164,7 @@ def parse_card(card, page_index: int) -> dict:
         title_candidates = [x for x in lines[:target_idx] if x not in ("리스트형", "갤러리형")]
         title = title_candidates[-1] if title_candidates else ""
 
-    target = value_between(lines, "대상", ("제작년도",)) or value_from_text(full_text, "대상", "제작년도")
+    target_raw = value_between(lines, "대상", ("제작년도",)) or value_from_text(full_text, "대상", "제작년도")
     year = value_between(lines, "제작년도", ("자료유형",)) or value_from_text(full_text, "제작년도", "자료유형")
     material_type = value_between(lines, "자료유형", ("주제",)) or value_from_text(full_text, "자료유형", "주제")
     topics_text = value_between(lines, "주제", ("조회수", "자세히보기", "다운로드"))
@@ -165,16 +173,24 @@ def parse_card(card, page_index: int) -> dict:
         topics_text = norm(m.group(1)) if m else ""
     topics = re.findall(r"#[^\s#/]+", topics_text)
 
-    if not title or not target or not year:
+    if not title or not year:
         return {}
 
+    inferred_target, target_basis = ("", "")
+    if not target_raw:
+        inferred_target, target_basis = infer_target_from_title(title)
+    target = target_raw or inferred_target
+
     detail_url = ""
+    detail_action = ""
     attachments = []
     for a in card.find_all("a"):
         text = norm(a.get_text(" ", strip=True))
         href = norm(a.get("href") or "")
         onclick = norm(a.get("onclick") or "")
         combined = " ".join((text, href, onclick)).lower()
+        if "자세히보기" in text and not detail_action:
+            detail_action = href or onclick
         if not detail_url and ("자세히보기" in text or ("archive" in combined and ("view" in combined or "detail" in combined))):
             if href and not href.lower().startswith("javascript:") and href != "#":
                 detail_url = urljoin(BASE_URL, href)
@@ -183,7 +199,7 @@ def parse_card(card, page_index: int) -> dict:
             download_url, raw = action_from_anchor(a)
             if not filename or not _EXT_RE.search(filename):
                 parent_text = norm(a.parent.get_text(" ", strip=True)) if a.parent else ""
-                m = re.search(r"([^/\\]+\.(?:pdf|zip|hwp|hwpx|docx?|pptx?|xlsx?|txt))", parent_text, re.I)
+                m = re.search(r"([^/\\]+\.(?:pdf|zip|hwp|hwpx|docx?|pptx?|xlsx?|txt|mp4))", parent_text, re.I)
                 if m:
                     filename = m.group(1)
             attachments.append({"filename": filename or "attachment", "download_url": download_url, "action_raw": raw})
@@ -193,12 +209,18 @@ def parse_card(card, page_index: int) -> dict:
         if not any(a["filename"] == filename for a in attachments):
             attachments.append({"filename": filename, "download_url": "", "action_raw": ""})
 
-    key_src = "|".join((title, target, year, material_type))
-    source_key = hashlib.sha1(key_src.encode("utf-8")).hexdigest()
+    # Prefer a source-controlled identity over title/metadata.  Legacy rows can
+    # legitimately share title/year/target but point to different source items
+    # (e.g. multiple contest winners with the same award title).
+    identity = img_src or detail_action or "|".join((title, target_raw, year, material_type, str(page_index)))
+    source_key = hashlib.sha1(identity.encode("utf-8")).hexdigest()
     return {
         "source_key": source_key,
         "title": title,
         "target": target,
+        "target_raw": target_raw,
+        "target_inferred": bool(inferred_target),
+        "target_evidence": title if target_basis == "title" else "",
         "year": year,
         "material_type": material_type,
         "topics": topics,
@@ -231,14 +253,6 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
                     f"candidate_cards={len(cards)}",
                     file=sys.stderr,
                 )
-                for idx, card in enumerate(cards[:2], start=1):
-                    img = card.find("img", alt=True)
-                    print(
-                        f"DEBUG card {idx}: "
-                        f"img_alt={norm(img.get('alt') if img else '')!r}, "
-                        f"lines={lines_of(card)[:16]!r}",
-                        file=sys.stderr,
-                    )
             break
         if signature == previous_signature:
             break
@@ -414,10 +428,13 @@ def main() -> int:
     print("\n=== CRAWL SUMMARY ===")
     print(f"all materials: {len(all_rows)}")
     print(f"school targets {targets}: {len(rows)}")
+    inferred = [x for x in rows if x.get("target_inferred")]
+    print(f"school target inferred from explicit title text: {len(inferred)}")
     for row in rows[:10]:
-        print(f"- [{row['target']}] {row['title']} / {row['year']} / attachments={len(row['attachments'])}")
+        marker = " [title-inferred]" if row.get("target_inferred") else ""
+        print(f"- [{row['target']}] {row['title']} / {row['year']} / attachments={len(row['attachments'])}{marker}")
 
-    if len(all_rows) < 250 or len(rows) < 80:
+    if len(all_rows) < 350 or len(rows) < 130:
         print("ERROR: parsed count is unexpectedly low; stop before DB/download.", file=sys.stderr)
         return 2
     if args.list_only:
