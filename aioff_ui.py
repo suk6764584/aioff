@@ -200,12 +200,16 @@ main{
 }
 .education-guide-preview-v19{
   background:#eee9e1!important;
+  overflow:hidden!important;
 }
 .education-guide-preview-v19 iframe{
   position:absolute!important;
-  inset:0!important;
-  width:100%!important;
-  height:100%!important;
+  left:0!important;
+  top:0!important;
+  right:auto!important;
+  bottom:auto!important;
+  width:calc(100% + 18px)!important;
+  height:calc(100% + 18px)!important;
   border:0!important;
   display:block!important;
   background:#fff!important;
