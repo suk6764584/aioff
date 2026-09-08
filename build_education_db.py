@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import html
 import json
@@ -12,7 +13,7 @@ import sys
 import time
 import zipfile
 from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -26,6 +27,10 @@ DEFAULT_TARGETS = ("초등", "중등", "고등")
 USER_AGENT = "AI-OFF-Education-RAG/1.0 (+https://aioff-ai.duckdns.org/)"
 
 _EXT_RE = re.compile(r"\.(pdf|zip|hwp|hwpx|doc|docx|ppt|pptx|xls|xlsx|txt|mp4)(?:$|\?)", re.I)
+_FILEDOWN_RE = re.compile(
+    r"fileDown\(\s*['\"]([^'\"]+)['\"]\s*(?:,\s*['\"]?([^'\"\),]*)['\"]?)?\s*\)",
+    re.I,
+)
 
 
 def norm(text: str) -> str:
@@ -130,18 +135,40 @@ def material_containers(soup: BeautifulSoup):
     return containers
 
 
-def action_from_anchor(a) -> tuple[str, str]:
-    href = norm(a.get("href") or "")
-    onclick = norm(a.get("onclick") or "")
-    data_url = norm(a.get("data-url") or a.get("data-href") or a.get("data-download-url") or "")
-    raw = data_url or href or onclick
-    url = ""
+def resolve_download_action(node) -> tuple[str, str]:
+    """Resolve a site download control to its real FileDown endpoint.
+
+    The archive renders attachments as buttons such as:
+      fileDown('<base64 FILE_xxx:::timestamp>','0')
+    The site's own JS decodes the first argument, keeps the FILE_xxx part, and
+    opens /cmm/fms/FileDown.do?atchFileId=...&fileSn=....
+    """
+    href = norm(node.get("href") or "")
+    onclick = norm(node.get("onclick") or "")
+    data_url = norm(node.get("data-url") or node.get("data-href") or node.get("data-download-url") or "")
+    raw = onclick or data_url or href
+
+    m = _FILEDOWN_RE.search(onclick)
+    if m:
+        token = norm(m.group(1))
+        file_sn = norm(m.group(2) or "0") or "0"
+        decoded = token
+        if not decoded.startswith("FILE_"):
+            try:
+                decoded = base64.b64decode(token).decode("utf-8")
+            except Exception:
+                return "", raw
+        atch_file_id = decoded.split(":::", 1)[0].strip()
+        if not re.fullmatch(r"FILE_[A-Za-z0-9_]+", atch_file_id):
+            return "", raw
+        query = urlencode({"atchFileId": atch_file_id, "fileSn": file_sn})
+        return f"{BASE_URL}/cmm/fms/FileDown.do?{query}", raw
+
     for candidate in (data_url, href):
         if candidate and not candidate.lower().startswith("javascript:") and candidate != "#":
             if any(k in candidate.lower() for k in ("download", "filedown", "file.do", "attach", "atch")) or _EXT_RE.search(candidate):
-                url = urljoin(BASE_URL, candidate)
-                break
-    return url, raw
+                return urljoin(BASE_URL, candidate), raw
+    return "", raw
 
 
 def parse_card(card, page_index: int) -> dict:
@@ -184,34 +211,35 @@ def parse_card(card, page_index: int) -> dict:
     detail_url = ""
     detail_action = ""
     attachments = []
-    for a in card.find_all("a"):
-        text = norm(a.get_text(" ", strip=True))
-        href = norm(a.get("href") or "")
-        onclick = norm(a.get("onclick") or "")
+    for node in card.find_all(["a", "button"]):
+        text = norm(node.get_text(" ", strip=True))
+        href = norm(node.get("href") or "")
+        onclick = norm(node.get("onclick") or "")
         combined = " ".join((text, href, onclick)).lower()
-        if "자세히보기" in text and not detail_action:
-            detail_action = href or onclick
-        if not detail_url and ("자세히보기" in text or ("archive" in combined and ("view" in combined or "detail" in combined))):
-            if href and not href.lower().startswith("javascript:") and href != "#":
-                detail_url = urljoin(BASE_URL, href)
-        filename = text
-        if _EXT_RE.search(filename) or any(k in combined for k in ("download", "filedown")):
-            download_url, raw = action_from_anchor(a)
+
+        if node.name == "a":
+            if "자세히보기" in text and not detail_action:
+                detail_action = href or onclick
+            if not detail_url and ("자세히보기" in text or ("archive" in combined and ("view" in combined or "detail" in combined))):
+                if href and not href.lower().startswith("javascript:") and href != "#":
+                    detail_url = urljoin(BASE_URL, href)
+
+        if _EXT_RE.search(text) or "filedown(" in combined or any(k in combined for k in ("download", "filedown")):
+            download_url, raw = resolve_download_action(node)
+            filename = text
             if not filename or not _EXT_RE.search(filename):
-                parent_text = norm(a.parent.get_text(" ", strip=True)) if a.parent else ""
+                parent_text = norm(node.parent.get_text(" ", strip=True)) if node.parent else ""
                 m = re.search(r"([^/\\]+\.(?:pdf|zip|hwp|hwpx|docx?|pptx?|xlsx?|txt|mp4))", parent_text, re.I)
                 if m:
                     filename = m.group(1)
-            attachments.append({"filename": filename or "attachment", "download_url": download_url, "action_raw": raw})
+            if filename and _EXT_RE.search(filename):
+                attachments.append({"filename": filename, "download_url": download_url, "action_raw": raw})
 
     filenames = [x for x in lines if _EXT_RE.search(x)]
     for filename in filenames:
         if not any(a["filename"] == filename for a in attachments):
             attachments.append({"filename": filename, "download_url": "", "action_raw": ""})
 
-    # Prefer a source-controlled identity over title/metadata.  Legacy rows can
-    # legitimately share title/year/target but point to different source items
-    # (e.g. multiple contest winners with the same award title).
     identity = img_src or detail_action or "|".join((title, target_raw, year, material_type, str(page_index)))
     source_key = hashlib.sha1(identity.encode("utf-8")).hexdigest()
     return {
