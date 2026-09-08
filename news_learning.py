@@ -529,3 +529,134 @@ def _render_final_fix() -> str:
 
 
 runtime._render_runtime_index = _render_final_fix
+
+
+# ---------------------------------------------------------------------------
+# Auth UI stabilization: keep only the real LOGIN ON/OFF control.
+# ---------------------------------------------------------------------------
+_RENDER_BEFORE_AUTH_STABLE = runtime._render_runtime_index
+
+
+def _render_auth_stable() -> str:
+    page = _RENDER_BEFORE_AUTH_STABLE()
+    patch = r'''
+<style>
+/* Legacy AI mode labels are no longer part of the header. */
+.mode-label,
+.paper-head .mode-label,
+[data-mode-label]{display:none!important}
+
+/* Keep the auth dock compact in both logged-in and logged-out states. */
+.aioff-auth-dock.aioff-auth-global{
+  position:fixed!important;
+  top:18px!important;
+  right:22px!important;
+  z-index:10020!important;
+  display:inline-flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:8px!important;
+  width:auto!important;
+  height:auto!important;
+  min-width:0!important;
+  min-height:0!important;
+  padding:0!important;
+  margin:0!important;
+  overflow:visible!important;
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+.aioff-auth-dock:not(.is-on) .aioff-auth-links{
+  display:none!important;
+}
+.aioff-auth-dock.is-on .aioff-auth-links{
+  position:static!important;
+  display:inline-flex!important;
+  flex-direction:row!important;
+  align-items:center!important;
+  justify-content:flex-end!important;
+  gap:6px!important;
+  width:auto!important;
+  height:auto!important;
+  min-width:0!important;
+  min-height:0!important;
+  padding:0!important;
+  margin:0!important;
+  overflow:visible!important;
+  background:transparent!important;
+  border:0!important;
+  border-radius:0!important;
+  box-shadow:none!important;
+}
+.aioff-auth-dock.is-on .aioff-auth-links>span{display:none!important}
+.aioff-auth-dock.is-on .aioff-auth-links button{
+  width:auto!important;
+  min-width:0!important;
+  height:30px!important;
+  min-height:30px!important;
+  margin:0!important;
+  padding:0 11px!important;
+  border:1px solid #cfc7bc!important;
+  border-radius:7px!important;
+  background:#f7f3ed!important;
+  color:#514b45!important;
+  font-size:10px!important;
+  line-height:1!important;
+  font-weight:800!important;
+  box-shadow:none!important;
+}
+</style>
+<script>
+(() => {
+  function isAuthStateNode(node){
+    const el=node && (node.nodeType===Node.ELEMENT_NODE ? node : node.parentElement);
+    return !!el?.closest?.('.aioff-auth-state');
+  }
+
+  function removeLegacyModeText(){
+    document.querySelectorAll('.mode-label,[data-mode-label]').forEach(el=>el.remove());
+
+    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
+    const textNodes=[];
+    while(walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach(node=>{
+      const text=(node.nodeValue||'').trim().replace(/\s+/g,' ');
+      if((text==='ON'||text==='AI ON') && !isAuthStateNode(node)) node.remove();
+    });
+
+    document.querySelectorAll('body *').forEach(el=>{
+      const text=(el.textContent||'').trim().replace(/\s+/g,' ');
+      if((text==='ON'||text==='AI ON') && !el.closest('.aioff-auth-state')) el.remove();
+    });
+  }
+
+  function normalizeAuthDock(){
+    const dock=document.querySelector('.aioff-auth-dock');
+    if(!dock) return;
+    dock.querySelectorAll('.mode-label,[data-mode-label]').forEach(el=>el.remove());
+    [...dock.childNodes].forEach(node=>{
+      if(node.nodeType!==Node.TEXT_NODE) return;
+      const text=(node.nodeValue||'').trim().replace(/\s+/g,' ');
+      if(text==='ON'||text==='AI ON') node.remove();
+    });
+  }
+
+  function clean(){removeLegacyModeText();normalizeAuthDock()}
+  clean();
+  new MutationObserver(clean).observe(document.body,{
+    childList:true,
+    subtree:true,
+    characterData:true,
+    attributes:true,
+    attributeFilter:['class']
+  });
+})();
+</script>
+'''
+    return page.replace("</body>", patch + "\n</body>")
+
+
+runtime._render_runtime_index = _render_auth_stable
