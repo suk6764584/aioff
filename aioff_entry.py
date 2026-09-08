@@ -32,7 +32,7 @@ def _render_entry_index() -> str:
   overflow:visible!important;
 }
 
-/* Kill every legacy pseudo-dot in the auth area first. */
+/* Auth-only pseudo cleanup. Never hide/remove learning UI classes globally. */
 .aioff-auth-dock *,
 .aioff-auth-dock *::before,
 .aioff-auth-dock *::after{
@@ -43,8 +43,13 @@ def _render_entry_index() -> str:
   content:none!important;
   display:none!important;
 }
-.mode-dot,.status-dot,.login-dot,.aioff-login-indicator,.aioff-mode-dot,
-[data-mode-label],.mode-label{
+.aioff-auth-dock .mode-dot,
+.aioff-auth-dock .status-dot,
+.aioff-auth-dock .login-dot,
+.aioff-auth-dock .aioff-login-indicator,
+.aioff-auth-dock .aioff-mode-dot,
+.aioff-auth-dock [data-mode-label],
+.aioff-auth-dock .mode-label{
   display:none!important;
 }
 
@@ -171,18 +176,24 @@ def _render_entry_index() -> str:
     const dock=document.querySelector('.aioff-auth-dock');
     if(!dock) return;
 
-    /* Remove old standalone AI/ON labels. LOGIN ON/OFF is never touched. */
-    document.querySelectorAll('.mode-dot,.status-dot,.login-dot,.aioff-login-indicator,.aioff-mode-dot,[data-mode-label],.mode-label').forEach(el=>el.remove());
+    /* Hide auth-only legacy indicators. Do not remove learning DOM nodes. */
+    dock.querySelectorAll('.mode-dot,.status-dot,.login-dot,.aioff-login-indicator,.aioff-mode-dot,[data-mode-label],.mode-label').forEach(el=>{
+      el.style.setProperty('display','none','important');
+    });
+
+    /* Standalone ON labels are hidden, not removed, so existing JS references stay valid. */
     document.querySelectorAll('body *').forEach(el=>{
       if(el.closest('.aioff-auth-state')) return;
       const text=(el.textContent||'').trim().replace(/\s+/g,' ');
-      if(el.children.length===0 && (text==='ON'||text==='AI ON')) el.remove();
+      if(el.children.length===0 && (text==='ON'||text==='AI ON')){
+        el.style.setProperty('display','none','important');
+      }
     });
 
-    /* Any empty legacy child inside the dock is an old indicator, not auth content. */
+    /* Empty legacy auth indicators only; keep structural auth elements. */
     dock.querySelectorAll('*').forEach(el=>{
       if(el.matches('.aioff-auth-state,.aioff-auth-links,.aioff-auth-greeting,button')) return;
-      if(el.children.length===0 && !(el.textContent||'').trim()) el.remove();
+      if(el.children.length===0 && !(el.textContent||'').trim()) el.style.setProperty('display','none','important');
     });
   }
 
