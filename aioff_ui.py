@@ -526,9 +526,6 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .aioff-composer-side .chat-status{margin-top:8px!important}
 
 .education-study-v21{max-width:none!important;width:100%!important}
-.aioff-learning-cover{margin:0 0 14px;border-bottom:1px solid #e7dfd5;background:#f5f1eb;padding:12px}
-.aioff-learning-cover small{display:block;margin:0 0 7px;font-size:9px;font-weight:850;color:#756b62}
-.aioff-learning-cover img{display:block;width:100%;height:240px;object-fit:contain;background:#ebe7e0;border:1px solid #ddd5cb;border-radius:8px}
 .education-study-v21-visual iframe{height:clamp(620px,72vh,920px)!important}
 .education-study-v21-visual img{width:100%!important;max-height:900px!important;object-fit:contain!important}
 .education-study-v21-questions ol{padding-left:0!important;list-style:none!important}
@@ -538,7 +535,7 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .aioff-question-progress{font-size:10px;font-weight:800;color:#9b6d4d}
 
 @media(max-width:1180px){main{width:calc(100% - 20px)!important}.aioff-learning-columns{grid-template-columns:minmax(0,1fr) 320px}.aioff-composer-side .composer textarea{min-height:500px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:205px!important;min-height:205px!important}}
-@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.aioff-learning-cover img{height:190px}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}}
+@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}}
 </style>
 <script>
 (() => {
@@ -598,20 +595,6 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
         stageText.textContent='사례를 선택하세요';chat.scrollTop=0;
       }catch(e){return chooserBeforeAioff(lessonId)}
     };
-  }
-
-  function installEducationCovers(){
-    document.querySelectorAll('.education-study-v21').forEach(card=>{
-      if(card.querySelector('.aioff-learning-cover')) return;
-      const id=String(card.dataset.eduV21||'');
-      const body=card.querySelector('.education-study-v21-body');
-      if(!id || !body) return;
-      const cover=document.createElement('div');
-      cover.className='aioff-learning-cover';
-      cover.innerHTML=`<small>자료 표지</small><img src="/api/education-thumb/${encodeURIComponent(id)}" alt="교육자료 썸네일" loading="lazy">`;
-      const visual=body.querySelector('.education-study-v21-visual');
-      body.insertBefore(cover,visual||body.firstChild);
-    });
   }
 
   function updateQuestionUI(state=''){
@@ -681,7 +664,7 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     return response;
   };
 
-  function scan(){installWideLearningLayout();installEducationCovers();installSequentialQuestions()}
+  function scan(){installWideLearningLayout();installSequentialQuestions()}
   installWideLearningLayout();scan();
   new MutationObserver(scan).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-loaded']});
 })();
