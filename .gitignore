@@ -9,4 +9,5 @@ uvicorn*.log
 _upload_*/
 *.zip
 raw_data/
+data/
 .DS_Store
