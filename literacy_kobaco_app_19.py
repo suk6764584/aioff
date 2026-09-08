@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import mimetypes
+import re
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -19,6 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent
 EDU_DB = BASE_DIR / "data" / "education" / "education.db"
 EDU_FILES = (BASE_DIR / "data" / "education" / "files").resolve()
 _EDU_THUMB_CACHE: dict[int, tuple[bytes, str]] = {}
+_EDU_FOCUS_CACHE: dict[int, dict] = {}
+
+_ACTIVITY_TERMS = (
+    "생각 열기", "생각해", "함께 생각", "생각해 볼", "왜", "무엇", "어떻게",
+    "마음", "상황", "활동", "실천", "문제", "퀴즈", "적어", "써 보", "골라", "선택",
+)
 
 
 def _education_case(case_id: str) -> dict:
@@ -67,6 +75,21 @@ def _material_attachments(material_id: int) -> list[dict]:
             (int(material_id),),
         ).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def _attachment(attachment_id: int | None) -> dict | None:
+    if not attachment_id or not EDU_DB.exists():
+        return None
+    conn = sqlite3.connect(EDU_DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute(
+            "SELECT id, material_id, filename, local_path, mime_type FROM attachments WHERE id=?",
+            (int(attachment_id),),
+        ).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
@@ -186,16 +209,10 @@ def _fallback_thumb(case: dict) -> tuple[bytes, str]:
     title = str(case.get("title") or "리터러시 교육자료")
     target = str(case.get("education_target") or "")
     safe_title = (
-        title.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
     safe_target = (
-        target.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        target.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
     svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
     <rect width="960" height="540" fill="#eef3fb"/>
@@ -207,7 +224,224 @@ def _fallback_thumb(case: dict) -> tuple[bytes, str]:
     return svg.encode("utf-8"), "image/svg+xml"
 
 
-for path in ("/api/education-file/{case_id}", "/api/education-thumb/{case_id}"):
+def _extract_source_questions(text: str) -> list[str]:
+    clean = " ".join(str(text or "").replace("？", "?").split())
+    if not clean:
+        return []
+    raw = re.findall(r"(?:^|(?<=[.!]))\s*([^?]{8,180}\?)", clean)
+    out: list[str] = []
+    for item in raw:
+        q = re.sub(r"\s+", " ", item).strip(" -•·")
+        q = re.sub(r"^\d+[.)]\s*", "", q)
+        if len(q) < 8 or q in out:
+            continue
+        out.append(q)
+        if len(out) >= 3:
+            break
+    return out
+
+
+def _focus_info(material_id: int) -> dict:
+    if material_id in _EDU_FOCUS_CACHE:
+        return dict(_EDU_FOCUS_CACHE[material_id])
+    result = {
+        "attachment_id": None,
+        "page": None,
+        "page_end": None,
+        "section": "",
+        "text": "",
+        "questions": [],
+    }
+    if not EDU_DB.exists():
+        _EDU_FOCUS_CACHE[material_id] = result
+        return dict(result)
+
+    conn = sqlite3.connect(EDU_DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, attachment_id, page_start, page_end, section, text
+            FROM chunks
+            WHERE material_id=?
+            ORDER BY id
+            """,
+            (int(material_id),),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    best = None
+    best_score = -10**9
+    for row in rows:
+        text = " ".join(str(row["text"] or "").split())
+        if not text:
+            continue
+        questions = _extract_source_questions(text)
+        score = len(questions) * 16
+        lower = text.lower()
+        score += sum(5 for term in _ACTIVITY_TERMS if term in lower)
+        if row["page_start"]:
+            score += 4
+        if 100 <= len(text) <= 2600:
+            score += 3
+        if any(x in lower for x in ("목차", "차례", "발간사", "저작권", "참고문헌")):
+            score -= 12
+        if score > best_score:
+            best_score = score
+            best = (row, text, questions)
+
+    if best:
+        row, text, questions = best
+        result = {
+            "attachment_id": int(row["attachment_id"]) if row["attachment_id"] else None,
+            "page": int(row["page_start"]) if row["page_start"] else None,
+            "page_end": int(row["page_end"]) if row["page_end"] else None,
+            "section": str(row["section"] or ""),
+            "text": text[:900],
+            "questions": questions,
+        }
+    _EDU_FOCUS_CACHE[material_id] = result
+    return dict(result)
+
+
+def _focus_pdf(material_id: int, focus: dict) -> Path | None:
+    item = _attachment(focus.get("attachment_id"))
+    path = _safe_local_path(str((item or {}).get("local_path") or ""))
+    if path and path.suffix.lower() == ".pdf":
+        return path
+
+    if path and path.suffix.lower() == ".zip":
+        section = str(focus.get("section") or "")
+        wanted = section.split(" :: ")[-1].replace("\\", "/") if ".pdf" in section.lower() else ""
+        cache_dir = BASE_DIR / "data" / "education" / "preview_cache" / f"{material_id:04d}"
+        cached = cache_dir / "focus.pdf"
+        try:
+            with zipfile.ZipFile(path) as zf:
+                pdfs = [
+                    info for info in zf.infolist()
+                    if not info.is_dir() and info.filename.lower().endswith(".pdf") and "__macosx/" not in info.filename.lower()
+                ]
+                if wanted:
+                    exact = [x for x in pdfs if x.filename.replace("\\", "/").endswith(wanted)]
+                    if exact:
+                        pdfs = exact
+                if pdfs:
+                    pdfs.sort(key=lambda x: (x.filename.count("/"), len(x.filename), x.filename))
+                    data = zf.read(pdfs[0])
+                    if data.startswith(b"%PDF"):
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        cached.write_bytes(data)
+                        return cached
+        except Exception:
+            pass
+
+    return _pdf_document(material_id)
+
+
+def _focus_images_from_pdf(path: Path, page_no: int | None) -> list[tuple[bytes, str]]:
+    try:
+        reader = PdfReader(str(path))
+    except Exception:
+        return []
+    if not reader.pages:
+        return []
+
+    base_index = max(0, min(len(reader.pages) - 1, int(page_no or 1) - 1))
+    page_indexes = [base_index]
+    if base_index > 0:
+        page_indexes.append(base_index - 1)
+    if base_index + 1 < len(reader.pages):
+        page_indexes.append(base_index + 1)
+
+    for idx in page_indexes:
+        found: list[tuple[bytes, str]] = []
+        try:
+            images = list(reader.pages[idx].images)
+        except Exception:
+            images = []
+        for image in images:
+            try:
+                data = bytes(image.data)
+                name = str(getattr(image, "name", "") or "")
+            except Exception:
+                continue
+            if len(data) < 10_000:
+                continue
+            media = _image_media(data, name)
+            if media:
+                found.append((data, media))
+        if found:
+            found.sort(key=lambda x: len(x[0]), reverse=True)
+            biggest = len(found[0][0])
+            useful = [x for x in found if len(x[0]) >= max(10_000, biggest // 5)]
+            return useful[:4]
+    return []
+
+
+def _focus_montage(images: list[tuple[bytes, str]], fallback: tuple[bytes, str]) -> tuple[bytes, str]:
+    if not images:
+        return fallback
+    if len(images) == 1:
+        return images[0]
+
+    images = images[:4]
+    cols = 2 if len(images) >= 3 else 1
+    rows = (len(images) + cols - 1) // cols
+    width = 1000
+    height = 650 if rows == 1 else 900
+    cell_w = width / cols
+    cell_h = height / rows
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">', '<rect width="100%" height="100%" fill="#f4f1eb"/>']
+    for i, (data, media) in enumerate(images):
+        row = i // cols
+        col = i % cols
+        x = col * cell_w + 8
+        y = row * cell_h + 8
+        w = cell_w - 16
+        h = cell_h - 16
+        encoded = base64.b64encode(data).decode("ascii")
+        parts.append(
+            f'<image x="{x}" y="{y}" width="{w}" height="{h}" preserveAspectRatio="xMidYMid meet" href="data:{media};base64,{encoded}"/>'
+        )
+    parts.append("</svg>")
+    return "".join(parts).encode("utf-8"), "image/svg+xml"
+
+
+def _apply_focus_to_cases() -> None:
+    for case in flow.CASE_LIBRARY.get("deepfake", []):
+        if not str(case.get("id") or "").startswith("education_"):
+            continue
+        material_id = int(case.get("education_material_id") or 0)
+        if not material_id:
+            continue
+        focus = _focus_info(material_id)
+        case["education_focus_page"] = focus.get("page") or ""
+        case["education_focus_text"] = focus.get("text") or ""
+        case["education_source_questions"] = focus.get("questions") or []
+        questions = [str(x).strip() for x in (focus.get("questions") or []) if str(x).strip()]
+        if questions:
+            case["opening_questions"] = questions[:3]
+            case["opening_question"] = questions[0]
+
+
+_apply_focus_to_cases()
+
+_OLD_PUBLIC_CASE_V19 = flow._public_case
+
+
+def _public_case_v19(case):
+    data = dict(_OLD_PUBLIC_CASE_V19(case))
+    if str(case.get("id") or "").startswith("education_"):
+        for key in ("education_focus_page", "education_focus_text", "education_source_questions"):
+            data[key] = case.get(key, "")
+    return data
+
+
+flow._public_case = _public_case_v19
+
+
+for path in ("/api/education-file/{case_id}", "/api/education-thumb/{case_id}", "/api/education-focus/{case_id}"):
     base._remove_route(path, "GET")
 
 
@@ -218,11 +452,7 @@ def education_file_v19(case_id: str):
     path = _pdf_document(material_id)
     if not path:
         raise HTTPException(404, "브라우저에서 바로 볼 수 있는 PDF 원문이 없습니다.")
-    return FileResponse(
-        path,
-        media_type="application/pdf",
-        headers={"Content-Disposition": "inline"},
-    )
+    return FileResponse(path, media_type="application/pdf", headers={"Content-Disposition": "inline"})
 
 
 @app.get("/api/education-thumb/{case_id}")
@@ -235,19 +465,16 @@ def education_thumb_v19(case_id: str):
 
     result: tuple[bytes, str] | None = None
     attachments = _material_attachments(material_id)
-
     for item in attachments:
         path = _safe_local_path(str(item.get("local_path") or ""))
         if path and path.suffix.lower() == ".zip":
             result = _thumbnail_from_zip(path)
             if result:
                 break
-
     if not result:
         pdf = _pdf_document(material_id)
         if pdf:
             result = _thumbnail_from_pdf(pdf)
-
     if not result:
         result = _fallback_thumb(case)
 
@@ -256,17 +483,34 @@ def education_thumb_v19(case_id: str):
     return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
 
 
+@app.get("/api/education-focus/{case_id}")
+def education_focus_v19(case_id: str):
+    case = _education_case(case_id)
+    material_id = int(case.get("education_material_id") or 0)
+    focus = _focus_info(material_id)
+    pdf = _focus_pdf(material_id, focus)
+    fallback = _EDU_THUMB_CACHE.get(material_id) or _fallback_thumb(case)
+    if pdf:
+        images = _focus_images_from_pdf(pdf, focus.get("page"))
+        data, media = _focus_montage(images, fallback)
+    else:
+        data, media = fallback
+    return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=1800"})
+
+
 def _render_index_kobaco_v19():
     page = previous._render_index_kobaco_v18()
     patch = r'''
 <style>
+/* LOGIN OFF=회색 점, LOGIN ON=파란 점. ON일 때 로그아웃 버튼은 바로 아래에 붙인다. */
 .aioff-auth-state:before{display:none!important}
 .aioff-login-indicator{display:inline-block;width:7px;height:7px;border-radius:50%;flex:0 0 7px;background:#aaa39a;margin-right:6px;vertical-align:1px}
 .aioff-auth-dock.is-on .aioff-login-indicator{background:#2f75e8}
 .aioff-auth-state{display:inline-flex!important;align-items:center!important}
-.aioff-auth-dock.is-on .aioff-auth-links{position:absolute!important;top:28px!important;right:0!important;width:auto!important;height:auto!important;padding:0!important;margin:0!important;display:flex!important;background:transparent!important;border:0!important;box-shadow:none!important}
+.aioff-auth-dock.is-on .aioff-auth-links{position:static!important;width:auto!important;height:auto!important;padding:6px 0 0!important;margin:0!important;display:flex!important;justify-content:flex-end!important;background:transparent!important;border:0!important;box-shadow:none!important}
 .aioff-auth-dock.is-on .aioff-auth-links button,.aioff-auth-dock.is-on .aioff-auth-links button:first-of-type{min-width:78px!important;height:34px!important;padding:0 13px!important;border:1px solid #cfc7bc!important;border-radius:8px!important;background:#f7f3ed!important;color:#514b45!important;font-size:11px!important;font-weight:800!important}
 
+/* 학교 자동완성은 select와 같은 정렬/화살표를 사용한다. */
 .aioff-school-search.aioff-school-combobox{position:relative!important;display:block!important;width:100%!important}
 .aioff-school-search.aioff-school-combobox:after{content:"";position:absolute;right:16px;top:20px;width:7px;height:7px;border-right:1.5px solid #302c28;border-bottom:1.5px solid #302c28;transform:rotate(45deg);pointer-events:none;z-index:3}
 .aioff-school-search.aioff-school-combobox.is-open:after{transform:translateY(4px) rotate(225deg)}
@@ -278,15 +522,20 @@ def _render_index_kobaco_v19():
 #aioff-school-results .aioff-school-result:hover,#aioff-school-results .aioff-school-result.is-active{background:#f2f5fa!important}
 #aioff-school-results .aioff-school-result b{display:block!important;margin:0 0 3px!important;font-size:12px!important}#aioff-school-results .aioff-school-result small{display:block!important;margin:0!important;font-size:10px!important;color:#756e67!important}
 
+/* 교육자료 선택 카드 */
 .education-guide-preview-v19{height:142px;margin:-10px -10px 9px;position:relative;overflow:hidden;border-radius:7px;background:#e8edf5;border:1px solid #d3dbe7}
 .education-guide-preview-v19 img{width:100%;height:100%;display:block;object-fit:cover;background:#eef3fb}
 .education-guide-preview-v19 .edu-chip{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);padding:4px 7px;border-radius:6px;background:rgba(22,31,43,.78);color:#fff;font-size:8px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.education-learning-card{border:1px solid #d9d2c9;border-radius:9px;background:#fff;overflow:hidden}.education-learning-head{padding:13px 15px;background:#f7f9fc;border-bottom:1px solid #dfe5ee}.education-learning-head small{display:block;font-size:8px;color:#66758a;margin-bottom:4px}.education-learning-head b{font-size:14px;line-height:1.4}
-.education-document-shell{height:clamp(430px,63vh,720px);background:#3b3b3b;border-bottom:1px solid #ded8d0}.education-document-shell iframe{display:block;width:100%;height:100%;border:0;background:#3b3b3b}
-.education-learning-task{padding:14px 16px;background:#fff8ef;border-bottom:1px solid #eadfce}.education-learning-task small{display:block;font-size:9px;color:#8a6b4f;font-weight:900;margin-bottom:5px}.education-learning-task b{display:block;font-size:12px;line-height:1.55;color:#332b25}
+
+/* 선택 후에는 PDF 전체가 아니라 실제 활동 장면 + 자료 속 질문만 보여준다. */
+.education-learning-card{border:1px solid #d9d2c9;border-radius:9px;background:#fff;overflow:hidden}
+.education-learning-head{padding:13px 15px;background:#f7f9fc;border-bottom:1px solid #dfe5ee}.education-learning-head small{display:block;font-size:8px;color:#66758a;margin-bottom:4px}.education-learning-head b{font-size:14px;line-height:1.4}
+.education-focus-stage{padding:12px;background:#f2f0ec;border-bottom:1px solid #ded8d0}.education-focus-stage img{display:block;width:100%;max-height:520px;object-fit:contain;margin:0 auto;background:#fff;border-radius:7px}
+.education-focus-label{padding:9px 14px 0;background:#fff;font-size:9px;font-weight:900;color:#74685d}
+.education-source-questions{padding:10px 16px 14px;background:#fff8ef;border-bottom:1px solid #eadfce}.education-source-questions small{display:block;font-size:9px;color:#8a6b4f;font-weight:900;margin-bottom:7px}.education-source-questions ol{margin:0;padding-left:20px}.education-source-questions li{font-size:12px;line-height:1.6;color:#332b25;margin:4px 0;font-weight:750}
+.education-focus-excerpt{padding:11px 15px;background:#fff;border-bottom:1px solid #e8e1d8}.education-focus-excerpt small{display:block;font-size:8px;color:#7a7067;margin-bottom:5px;font-weight:850}.education-focus-excerpt p{margin:0;font-size:10px;line-height:1.55;color:#5e554d;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
 .education-learning-meta{display:flex;gap:6px;flex-wrap:wrap;padding:10px 14px;background:#faf8f4;border-bottom:1px solid #e7e0d7}.education-learning-meta span{padding:5px 8px;border:1px solid #ded6cb;border-radius:999px;background:#fff;font-size:9px;color:#645c54}
 .education-learning-actions{display:flex;gap:8px;padding:10px 14px 13px;flex-wrap:wrap}.education-learning-actions a{display:inline-flex;padding:7px 10px;border-radius:7px;text-decoration:none;font-size:9px;font-weight:850;background:#26221f;color:#fff!important}.education-learning-actions a.alt{background:#fff;color:#2d2925!important;border:1px solid #cfc6ba}
-@media(max-width:700px){.education-document-shell{height:56vh;min-height:380px}}
 </style>
 <script>
 (() => {
@@ -320,10 +569,10 @@ def _render_index_kobaco_v19():
     const hasElementary=/(초등|초등학생|초등학교)/.test(target)||target==='초';
     const hasMiddle=/(중등|중학생|중학교)/.test(target)||target==='중';
     const hasHigh=/(고등|고등학생|고등학교)/.test(target)||target==='고';
-    const hasParent=/(학부모|보호자|교사|교직원)/.test(target);
-    if(level==='초') return hasElementary&&!hasMiddle&&!hasHigh&&!hasParent;
-    if(level==='중') return hasMiddle&&!hasElementary&&!hasHigh&&!hasParent;
-    if(level==='고') return hasHigh&&!hasElementary&&!hasMiddle&&!hasParent;
+    const hasAdult=/(학부모|보호자|교사|교직원)/.test(target);
+    if(level==='초') return hasElementary&&!hasMiddle&&!hasHigh&&!hasAdult;
+    if(level==='중') return hasMiddle&&!hasElementary&&!hasHigh&&!hasAdult;
+    if(level==='고') return hasHigh&&!hasElementary&&!hasMiddle&&!hasAdult;
     return false;
   }
   function gradePriority(c,user){
@@ -357,9 +606,17 @@ def _render_index_kobaco_v19():
   window.caseMedia=function(c){
     const id=String(c?.id||'');if(!id.startsWith('education_'))return mediaBeforeV19(c);
     const rows={};(c.data_rows||[]).forEach(r=>rows[String(r.label||'')]=String(r.value||''));
-    const question=c.opening_question||(Array.isArray(c.opening_questions)?c.opening_questions[0]:'')||'자료를 직접 보고, 가장 먼저 확인되는 사실과 자신의 생각을 구분해 적어보세요.';
+    let questions=Array.isArray(c.education_source_questions)?c.education_source_questions.filter(Boolean):[];
+    if(!questions.length){
+      const q=c.opening_question||(Array.isArray(c.opening_questions)?c.opening_questions[0]:'')||'위 활동 장면을 보고 자료에서 직접 확인한 내용과 자신의 생각을 나누어 적어보세요.';
+      questions=[q];
+    }
+    const qhtml=questions.slice(0,3).map(q=>`<li>${esc(q)}</li>`).join('');
+    const focusText=String(c.education_focus_text||'').trim();
+    const page=c.education_focus_page?` · 원문 ${esc(String(c.education_focus_page))}쪽 부근`:'';
+    const excerpt=focusText?`<div class="education-focus-excerpt"><small>이 활동과 함께 추출된 원문${page}</small><p>${esc(focusText)}</p></div>`:'';
     const source=c.source_url?`<a class="alt" href="${esc(c.source_url)}" target="_blank" rel="noopener">공식 자료 페이지 ↗</a>`:'';
-    return `<div class="chat-case-media"><div class="education-learning-card"><div class="education-learning-head"><small>리터러시 교육 안내서 · 실제 원문 학습</small><b>${esc(c.title||'디지털윤리 교육자료')}</b></div><div class="education-document-shell"><iframe src="/api/education-file/${encodeURIComponent(id)}#view=FitH" title="${esc(c.title||'교육자료')} 원문"></iframe></div><div class="education-learning-task"><small>자료를 보면서 생각해보세요</small><b>${esc(question)}</b></div><div class="education-learning-meta"><span>대상 ${esc(rows['대상']||'-')}</span><span>${esc(rows['연도']||'연도 -')}</span><span>${esc(rows['자료유형']||'자료유형 -')}</span></div><div class="education-learning-actions"><a href="/api/education-file/${encodeURIComponent(id)}" target="_blank" rel="noopener">원문 크게 보기 ↗</a>${source}</div></div></div>`;
+    return `<div class="chat-case-media"><div class="education-learning-card"><div class="education-learning-head"><small>리터러시 교육 안내서 · 활동 한 장면</small><b>${esc(c.title||'디지털윤리 교육자료')}</b></div><div class="education-focus-stage"><img src="/api/education-focus/${encodeURIComponent(id)}" alt="${esc(c.title||'교육자료')} 활동 장면"></div><div class="education-focus-label">전체 파일을 펼치지 않고, 이 자료에서 문제와 연결된 활동 장면만 보여줍니다.</div><div class="education-source-questions"><small>자료 속 문제</small><ol>${qhtml}</ol></div>${excerpt}<div class="education-learning-meta"><span>대상 ${esc(rows['대상']||'-')}</span><span>${esc(rows['연도']||'연도 -')}</span><span>${esc(rows['자료유형']||'자료유형 -')}</span></div><div class="education-learning-actions"><a href="/api/education-file/${encodeURIComponent(id)}" target="_blank" rel="noopener">원문 전체 보기 ↗</a>${source}</div></div></div>`;
   };
 })();
 </script>
