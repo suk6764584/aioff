@@ -497,6 +497,7 @@ def _render_index_aioff_ui():
 main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!important;padding:28px 0 42px!important}
 .workspace,.study-paper{width:100%!important;max-width:none!important}
 .study-paper>.paper-head .mode-label{display:none!important}
+.aioff-auth-dock.aioff-auth-global{position:fixed!important;top:18px!important;right:22px!important;z-index:10020!important;display:inline-flex!important}
 
 .chat-case-option{padding:0 0 13px!important;overflow:hidden!important}
 .chat-case-option>b,.chat-case-option>small{display:block!important;margin-left:14px!important;margin-right:14px!important;text-align:left!important}
@@ -508,6 +509,8 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .education-guide-preview-v19 .edu-chip{z-index:3!important}
 .aioff-aisac-preview{position:relative;overflow:hidden;background:#eee9e1}
 .aioff-aisac-preview:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,.20));pointer-events:none}
+.aisac-player-shell{height:clamp(440px,62vh,760px)!important;max-height:760px!important;min-height:440px!important}
+.aisac-player-frame{width:100%!important;height:100%!important}
 
 .aioff-learning-columns{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,24vw,430px);min-height:calc(100vh - 150px)}
 .aioff-learning-columns>.chat-area{min-width:0;padding:18px 20px 18px 24px!important;border-right:1px solid var(--line)}
@@ -534,8 +537,8 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .education-study-v21-questions h4{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important}
 .aioff-question-progress{font-size:10px;font-weight:800;color:#9b6d4d}
 
-@media(max-width:1180px){main{width:calc(100% - 20px)!important}.aioff-learning-columns{grid-template-columns:minmax(0,1fr) 320px}.aioff-composer-side .composer textarea{min-height:500px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:205px!important;min-height:205px!important}}
-@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}}
+@media(max-width:1180px){main{width:calc(100% - 20px)!important}.aioff-learning-columns{grid-template-columns:minmax(0,1fr) 320px}.aioff-composer-side .composer textarea{min-height:500px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:205px!important;min-height:205px!important}.aisac-player-shell{height:clamp(380px,56vh,620px)!important;min-height:380px!important}}
+@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}.aisac-player-shell{height:clamp(260px,46vh,430px)!important;min-height:260px!important}}
 </style>
 <script>
 (() => {
@@ -543,9 +546,18 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
   let activeQuestions=[];
   let activeQuestionIndex=0;
   let questionAttempts=[];
+  let lastContextCaseId='';
   const nativeFetch=window.fetch.bind(window);
 
+  function installGlobalAuthDock(){
+    const dock=document.querySelector('.aioff-auth-dock');
+    if(!dock) return;
+    if(dock.parentElement!==document.body) document.body.appendChild(dock);
+    dock.classList.add('aioff-auth-global');
+  }
+
   function installWideLearningLayout(){
+    installGlobalAuthDock();
     const paper=document.querySelector('.study-paper');
     if(!paper || paper.querySelector('.aioff-learning-columns')) return;
     paper.querySelector(':scope > .paper-head .mode-label')?.remove();
@@ -565,6 +577,39 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     if(textarea){textarea.placeholder='현재 질문에 대한 생각을 적어보세요.';textarea.setAttribute('aria-label','현재 질문에 대한 답변 입력')}
   }
 
+  function clearEducationQuestionState(){
+    activeEducationCard=null;activeQuestions=[];activeQuestionIndex=0;questionAttempts=[];
+    const side=document.querySelector('[data-aioff-side-question]');if(side)side.style.display='none';
+    const sideProgress=document.querySelector('[data-aioff-side-progress]');if(sideProgress)sideProgress.textContent='';
+    const sideText=document.querySelector('[data-aioff-side-text]');if(sideText)sideText.textContent='';
+    const textarea=document.getElementById('input');if(textarea)textarea.placeholder='자료를 보고 생각한 내용을 적어보세요.';
+  }
+
+  function observedCaseId(){try{return String(inlineCaseId||'')}catch(e){return ''}}
+  function observedLessonId(){try{return String(inlineLessonId||selectedLesson||'')}catch(e){return ''}}
+  function caseData(lessonId,caseId){
+    const rows=Array.isArray(fixedTopicCases?.[lessonId])?fixedTopicCases[lessonId]:[];
+    return rows.find(c=>String(c?.id||'')===String(caseId||''))||null;
+  }
+  function syncNonEducationQuestion(lessonId,caseId){
+    clearEducationQuestionState();
+    const c=caseData(lessonId,caseId);if(!c)return;
+    const qs=Array.isArray(c.opening_questions)?c.opening_questions.filter(Boolean):[];
+    const q=String(c.opening_question||qs[0]||'').trim();if(!q)return;
+    const side=document.querySelector('[data-aioff-side-question]');
+    const sideProgress=document.querySelector('[data-aioff-side-progress]');
+    const sideText=document.querySelector('[data-aioff-side-text]');
+    if(side&&sideProgress&&sideText){side.style.display='block';sideProgress.textContent='현재 사례 질문';sideText.textContent=q}
+    const textarea=document.getElementById('input');if(textarea)textarea.placeholder='현재 사례 질문에 대한 생각을 적어보세요.';
+  }
+  function syncCurrentCaseContext(){
+    const caseId=observedCaseId();if(caseId===lastContextCaseId)return;
+    lastContextCaseId=caseId;
+    if(!caseId){clearEducationQuestionState();return}
+    if(caseId.startsWith('education_')){clearEducationQuestionState();return}
+    syncNonEducationQuestion(observedLessonId(),caseId);
+  }
+
   const previewBeforeAioff=window.fixedPreview;
   if(typeof previewBeforeAioff==='function'){
     window.fixedPreview=function(c){
@@ -581,6 +626,7 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
   const chooserBeforeAioff=window.showCaseChooser;
   if(typeof chooserBeforeAioff==='function'){
     window.showCaseChooser=async function(lessonId){
+      clearEducationQuestionState();lastContextCaseId='';
       if(lessonId!=='deepfake') return chooserBeforeAioff(lessonId);
       try{
         const r=await nativeFetch('/api/aioff-education-cases',{credentials:'same-origin'});
@@ -594,6 +640,18 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
         input.placeholder='위에서 사례를 먼저 선택해 주세요.';input.disabled=true;send.disabled=true;finish.disabled=true;
         stageText.textContent='사례를 선택하세요';chat.scrollTop=0;
       }catch(e){return chooserBeforeAioff(lessonId)}
+    };
+  }
+
+  const startCaseBeforeAioff=window.startCase;
+  if(typeof startCaseBeforeAioff==='function'){
+    window.startCase=async function(lessonId,caseId){
+      const id=String(caseId||'');
+      if(!id.startsWith('education_')) clearEducationQuestionState();
+      const result=await startCaseBeforeAioff(lessonId,caseId);
+      lastContextCaseId=id;
+      if(!id.startsWith('education_')) syncNonEducationQuestion(lessonId,id);
+      return result;
     };
   }
 
@@ -646,7 +704,8 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
   window.fetch=async function(resource,init){
     const url=typeof resource==='string'?resource:String(resource?.url||'');
     let educationChat=false;
-    if(url.includes('/api/chat-stream') && activeEducationCard && activeQuestions.length && init && typeof init.body==='string'){
+    const currentCaseId=observedCaseId();
+    if(url.includes('/api/chat-stream') && currentCaseId.startsWith('education_') && activeEducationCard?.isConnected && activeQuestions.length && init && typeof init.body==='string'){
       try{
         const body=JSON.parse(init.body);
         questionAttempts[activeQuestionIndex]=(questionAttempts[activeQuestionIndex]||0)+1;
@@ -664,8 +723,8 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     return response;
   };
 
-  function scan(){installWideLearningLayout();installSequentialQuestions()}
-  installWideLearningLayout();scan();
+  function scan(){installGlobalAuthDock();installWideLearningLayout();syncCurrentCaseContext();installSequentialQuestions()}
+  installGlobalAuthDock();installWideLearningLayout();scan();
   new MutationObserver(scan).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-loaded']});
 })();
 </script>
