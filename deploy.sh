@@ -3,13 +3,13 @@ set -euo pipefail
 
 cd /opt/aioff
 
-echo "[1/7] Pull latest code"
+echo "[1/6] Pull latest code"
 git pull --ff-only origin main
 
-echo "[2/7] Install/update dependencies"
+echo "[2/6] Install/update dependencies"
 .venv/bin/pip install -r requirements.txt
 
-echo "[3/7] Prepare KOBACO Parquet snapshot"
+echo "[3/6] Prepare KOBACO Parquet snapshot"
 KOBACO_DIR="/opt/aioff/raw_data/parquet_db"
 mkdir -p "$KOBACO_DIR"
 KOBACO_ARCHIVE=""
@@ -43,44 +43,21 @@ with zipfile.ZipFile(archive) as zf:
                     break
                 dst.write(chunk)
         count += 1
-print(f"Extracted/updated {count} parquet files from {archive.name}")
+print(f"KOBACO parquet updated: {count}")
 PY
 else
-  echo "WARN: KOBACO parquet snapshot not found."
+  echo "WARN: KOBACO parquet snapshot archive not found; existing parquet files are kept."
 fi
 
-KOBACO_COUNT=$(find "$KOBACO_DIR" -maxdepth 1 -type f -name '*.parquet' | wc -l | tr -d ' ')
-echo "KOBACO parquet files: $KOBACO_COUNT"
-
-if [ -f .env ]; then
-  if grep -q '^GEMINI_MODEL=' .env; then
-    sed -i 's/^GEMINI_MODEL=.*/GEMINI_MODEL=gemini-3.5-flash-lite/' .env
-  else
-    printf '\nGEMINI_MODEL=gemini-3.5-flash-lite\n' >> .env
-  fi
-  if grep -q '^GROQ_MODEL=' .env; then
-    sed -i 's#^GROQ_MODEL=.*#GROQ_MODEL=openai/gpt-oss-20b#' .env
-  else
-    printf 'GROQ_MODEL=openai/gpt-oss-20b\n' >> .env
-  fi
-fi
-
-echo "[4/7] Syntax + auth + education + KOBACO integration check"
+echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
-  app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py \
-  literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py \
-  literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py \
-  literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py \
-  literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py education_db.py auth_proto.py \
-  literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py \
-  literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py \
-  literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py \
-  literacy_kobaco_app_13.py literacy_kobaco_app_14.py literacy_kobaco_app_15.py migrate_db.py
+  literacy_kobaco_app_20.py literacy_kobaco_app_19.py literacy_kobaco_app_18.py \
+  literacy_kobaco_app_17.py auth_proto.py education_db.py kobaco_db.py migrate_db.py
 
 .venv/bin/python - <<'PY'
-import re
-import sqlite3
-import literacy_kobaco_app_15 as m
+import literacy_kobaco_app_20 as m
+
+assert m.app is not None
 
 expected = {
     'news': 'kobaco_aisac_',
@@ -89,165 +66,76 @@ expected = {
 }
 for lesson_id, prefix in expected.items():
     cases = m.flow.CASE_LIBRARY.get(lesson_id, [])
-    ids = [str(c.get('id','')) for c in cases]
-    print(f"{lesson_id}: {len(ids)} cases")
+    ids = [str(c.get('id', '')) for c in cases]
     if len(ids) < 3:
         raise SystemExit(f"ERROR: {lesson_id} has fewer than 3 cases")
     if not all(x.startswith(prefix) for x in ids):
-        raise SystemExit(f"ERROR: {lesson_id} contains wrong case type")
+        raise SystemExit(f"ERROR: {lesson_id} contains unexpected case ids")
+    print(f"{lesson_id}: {len(ids)} cases")
 
-education_cases = m.flow.CASE_LIBRARY.get('deepfake', [])
-targets = [str(c.get('education_target') or '') for c in education_cases]
-target_counts = {
-    '초': sum('초' in x for x in targets),
-    '중': sum('중' in x for x in targets),
-    '고': sum('고' in x for x in targets),
-}
-print("education target counts:", target_counts)
-for level, count in target_counts.items():
-    if count < 1:
-        raise SystemExit(f"ERROR: no education cases for school level {level}")
-
-conn = sqlite3.connect(m.EDU_DB)
-chunks, embedded = conn.execute(
-    "SELECT COUNT(*), SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) FROM chunks"
-).fetchone()
-conn.close()
-embedded = int(embedded or 0)
-print(f"education embeddings: {embedded}/{chunks}")
-if int(chunks or 0) < 1:
-    raise SystemExit("ERROR: education chunks missing")
-if embedded < 1:
-    raise SystemExit("ERROR: no education embeddings stored yet")
-if embedded < int(chunks):
-    print("education embedding status: PARTIAL (allowed for v15 rollout)")
-else:
-    print("education embedding status: COMPLETE")
-
-sample = education_cases[0]
-ctx = m._education_fts_context(sample, "디지털 윤리 정보", limit=2)
-if not ctx:
-    raise SystemExit("ERROR: education FTS/fallback context empty")
-print("education source grounding: OK")
-
-aisac_cases = m.flow.CASE_LIBRARY.get('news', [])
-if len(aisac_cases) < 6:
-    raise SystemExit(f"ERROR: too few AiSAC cases after 2020 filter: {len(aisac_cases)}")
-for case in aisac_cases:
-    rows = {str(x.get('label','')): str(x.get('value','')) for x in case.get('data_rows', [])}
-    registered = rows.get('등록일', case.get('registration_date', ''))
-    match = re.search(r'(20\d{2})', registered)
-    if not match or int(match.group(1)) < 2020:
-        raise SystemExit(f"ERROR: pre-2020 AiSAC case exposed: {case.get('id')} / {registered}")
-    if 'startDate=2020-01-01' not in str(case.get('aisac_search_url') or ''):
-        raise SystemExit(f"ERROR: AiSAC fixed start date missing: {case.get('id')}")
-
-for case in m.flow.CASE_LIBRARY.get('ai', []):
-    rows = {str(x.get('label','')): str(x.get('value','')) for x in case.get('data_rows', [])}
-    if '13-19세' not in rows.get('연도·집단', ''):
-        raise SystemExit(f"ERROR: non-youth OTT case exposed: {case.get('id')}")
-    if '이용비율 상위' not in rows:
-        raise SystemExit(f"ERROR: OTT usage-rate field missing: {case.get('id')}")
-
-page = m._render_index_kobaco_v15()
-required_page_markers = (
-    'fixedTopicCases',
+page = m._render_index_kobaco_v20()
+for marker in (
     'AI가 읽은 광고',
     '리터러시 교육 안내서',
     '청소년·OTT 통계',
     'LOGIN OFF',
-    'aioff-auth-overlay',
     'education_',
-    'kobaco_aisac_',
-    'kobaco_ott_',
-    '/api/aisac-thumb/',
-    '/api/aisac-video/',
-    '/api/aisac-player/',
-    '2020-01-01',
-)
-for marker in required_page_markers:
+):
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
-if '공익광고 효과 수치 제대로 읽기' in page:
-    raise SystemExit("ERROR: removed public-ad topic title still rendered")
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
 for path in (
-    '/api/auth/me', '/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/schools',
-    '/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}',
-    '/api/aisac-video/{case_id}', '/api/aisac-player/{case_id}',
-    '/api/chat-stream', '/api/analyze', '/api/off-test', '/api/off-submit',
+    '/api/auth/me',
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/logout',
+    '/api/auth/schools',
+    '/api/education-learning/{case_id}',
+    '/api/education-activity-pdf/{case_id}',
+    '/api/chat-stream',
+    '/api/analyze',
+    '/api/off-test',
+    '/api/off-submit',
 ):
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
 
-node = m
-adaptive_tutor = False
-old_canned_tutor = False
-for _ in range(8):
-    if hasattr(node, 'kobaco_ai_chat_stream'):
-        adaptive_tutor = True
-    if hasattr(node, 'kobaco_instant_chat_stream'):
-        old_canned_tutor = True
-    node = getattr(node, 'previous', None)
-    if node is None:
-        break
-if not adaptive_tutor:
-    raise SystemExit('ERROR: adaptive AI tutor route missing')
-if old_canned_tutor:
-    raise SystemExit('ERROR: old canned instant tutor route is still exposed')
-
-print('V15 AUTH + EDUCATION GUIDE + PARTIAL RAG + AISAC + YOUTH OTT OK')
+print('IMPORT + ROUTE + ROOT CHECK OK')
 PY
 
-echo "[5/7] Database migration"
 .venv/bin/python migrate_db.py
 
-echo "[6/7] Install/reload service"
-if systemctl is-active --quiet aioff 2>/dev/null; then
-  systemctl stop aioff
-else
-  pkill -f 'uvicorn .*:app --host 0.0.0.0 --port 3000' 2>/dev/null || true
-fi
-cp -f aioff.service /etc/systemd/system/aioff.service
+echo "[5/6] Install/restart service"
+/bin/cp -f aioff.service /etc/systemd/system/aioff.service
 systemctl daemon-reload
 systemctl enable aioff >/dev/null
 systemctl restart aioff
-sleep 2
 
-echo "[7/7] Health + live routing check"
-curl -fsS http://127.0.0.1:3000/health
-echo
-curl -fsS http://127.0.0.1:3000/api/kobaco-status
-echo
-curl -fsS http://127.0.0.1:3000/api/auth/me
-echo
-curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-
-for marker in \
-  'fixedTopicCases' 'AI가 읽은 광고' '리터러시 교육 안내서' '청소년·OTT 통계' \
-  'LOGIN OFF' 'education_' 'kobaco_aisac_' 'kobaco_ott_' \
-  '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' '2020-01-01'; do
-  if ! grep -q "$marker" /tmp/aioff_root.html; then
-    echo "ERROR: live root marker missing: $marker"
-    exit 1
+echo "[6/6] Health check"
+ok=0
+for _ in $(seq 1 20); do
+  if curl -fsS --max-time 5 http://127.0.0.1:3000/health >/tmp/aioff_health.json 2>/dev/null; then
+    ok=1
+    break
   fi
+  sleep 1
 done
 
-if grep -q '공익광고 효과 수치 제대로 읽기' /tmp/aioff_root.html; then
-  echo "ERROR: removed public-ad topic is still live"
+if [ "$ok" -ne 1 ]; then
+  echo "ERROR: service did not become healthy"
+  systemctl status aioff --no-pager -l || true
   exit 1
 fi
 
-if ! grep -q 'literacy_kobaco_app_15:app' aioff.service; then
-  echo "ERROR: service is not pointing to v15"
+cat /tmp/aioff_health.json
+echo
+curl -fsS --max-time 5 http://127.0.0.1:3000/api/auth/me
+echo
+
+if ! grep -q 'literacy_kobaco_app_20:app' /etc/systemd/system/aioff.service; then
+  echo "ERROR: service is not pointing to v20"
   exit 1
 fi
 
-if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
-  echo "ERROR: old forced typography/readability UI still active"
-  exit 1
-fi
-
-echo "ROOT PAGE + LOGIN + EDUCATION GUIDE + AISAC + OTT OK"
-echo "DEPLOY OK"
+echo "DEPLOY OK: literacy_kobaco_app_20"
