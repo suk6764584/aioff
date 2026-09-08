@@ -52,12 +52,18 @@ fi
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
   literacy_kobaco_app_20.py literacy_kobaco_app_19.py literacy_kobaco_app_18.py \
-  literacy_kobaco_app_17.py auth_proto.py education_db.py kobaco_db.py migrate_db.py
+  literacy_kobaco_app_17.py auth_proto.py education_db.py kobaco_db.py migrate_db.py \
+  education_archive_parser.py download_education_sources.py extract_education_sources.py \
+  embed_education_db.py
 
 .venv/bin/python - <<'PY'
+import education_archive_parser
+import download_education_sources
 import literacy_kobaco_app_20 as m
 
 assert m.app is not None
+assert education_archive_parser.LIST_URL
+assert download_education_sources.DETAIL_URL
 
 expected = {
     'news': 'kobaco_aisac_',
