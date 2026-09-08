@@ -54,34 +54,62 @@ def value_from_text(text: str, label: str, next_label: str) -> str:
     return norm(m.group(1)) if m else ""
 
 
-def material_containers(soup: BeautifulSoup):
-    """Find one DOM container per list item without depending on site CSS classes.
+def _is_single_material_container(node) -> bool:
+    lines = lines_of(node)
+    return (
+        lines.count("대상") == 1
+        and lines.count("제작년도") == 1
+        and lines.count("자료유형") == 1
+        and lines.count("주제") == 1
+    )
 
-    The archive page nests the field labels quite deeply.  The previous parser only
-    walked nine ancestors from the `제작년도` text node, which can stop before the
-    actual item container and therefore return zero items even though the labels are
-    present in the response.  Walk farther and select the smallest ancestor that
-    contains exactly one complete metadata set.
+
+def material_containers(soup: BeautifulSoup):
+    """Return one complete list-view container per material.
+
+    The site's metadata block and thumbnail/title live in sibling DOM branches.
+    Starting from `제작년도` finds the metadata-only block (12 candidates) but
+    that block has no title, so parse_card rejects every row. Start from the
+    thumbnail image instead and walk upward until the first ancestor containing
+    exactly one complete metadata set. This yields the full list item.
     """
     seen: set[int] = set()
     containers = []
-    label_re = re.compile(r"^(?:대상|제작년도|자료유형|주제)$")
 
+    # Preferred path: each list-view material has an image with the material
+    # title in alt text. The gallery view does not contain 제작년도, so the
+    # metadata-count gate naturally excludes duplicate gallery cards.
+    for img in soup.find_all("img", alt=True):
+        if not norm(img.get("alt") or ""):
+            continue
+        node = img.parent
+        best = None
+        for _ in range(28):
+            if node is None or getattr(node, "name", None) in ("html", "body"):
+                break
+            if _is_single_material_container(node):
+                best = node
+                break
+            node = node.parent
+        if best is None:
+            continue
+        marker = id(best)
+        if marker not in seen:
+            seen.add(marker)
+            containers.append(best)
+
+    if containers:
+        return containers
+
+    # Fallback for a future markup change where list thumbnails disappear.
+    label_re = re.compile(r"^(?:대상|제작년도|자료유형|주제)$")
     for text_node in soup.find_all(string=lambda s: bool(s and label_re.search(norm(str(s))))):
         node = text_node.parent
         best = None
-        for _ in range(24):
+        for _ in range(28):
             if node is None or getattr(node, "name", None) in ("html", "body"):
                 break
-            lines = lines_of(node)
-            # Exact line counts distinguish a single list item from the whole list,
-            # which contains the same labels many times.
-            if (
-                lines.count("대상") == 1
-                and lines.count("제작년도") == 1
-                and lines.count("자료유형") == 1
-                and lines.count("주제") == 1
-            ):
+            if _is_single_material_container(node):
                 best = node
                 break
             node = node.parent
@@ -117,7 +145,7 @@ def parse_card(card, page_index: int) -> dict:
     if not all(label in full_text for label in ("대상", "제작년도", "자료유형", "주제")):
         return {}
 
-    # Image alt is the most stable title source on both list/grid markup.
+    # Image alt is the canonical list-view title.
     img = card.find("img", alt=True)
     title = norm(img.get("alt") if img else "")
     if not title:
@@ -186,8 +214,6 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
     for page in range(1, max_pages + 1):
         r = session.get(LIST_URL, params={"pageIndex": page}, timeout=30)
         r.raise_for_status()
-        # Let BeautifulSoup honor the charset declared by the page instead of
-        # depending on requests/chardet's guess for Korean text.
         soup = BeautifulSoup(r.content, "html.parser")
         cards = material_containers(soup)
         rows = [parse_card(c, page) for c in cards]
@@ -205,6 +231,14 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
                     f"candidate_cards={len(cards)}",
                     file=sys.stderr,
                 )
+                for idx, card in enumerate(cards[:2], start=1):
+                    img = card.find("img", alt=True)
+                    print(
+                        f"DEBUG card {idx}: "
+                        f"img_alt={norm(img.get('alt') if img else '')!r}, "
+                        f"lines={lines_of(card)[:16]!r}",
+                        file=sys.stderr,
+                    )
             break
         if signature == previous_signature:
             break
@@ -226,7 +260,7 @@ def school_materials(rows: list[dict], targets: tuple[str, ...]) -> list[dict]:
 
 
 def safe_filename(value: str) -> str:
-    value = re.sub(r"[\\/:*?\"<>|]+", "_", value).strip(" .")
+    value = re.sub(r'[\\/:*?"<>|]+', "_", value).strip(" .")
     return value[:180] or "attachment"
 
 
@@ -242,7 +276,7 @@ def download_attachment(session: requests.Session, row: dict, out_dir: Path) -> 
     with session.get(url, stream=True, timeout=90, allow_redirects=True) as r:
         r.raise_for_status()
         disposition = r.headers.get("Content-Disposition", "")
-        m = re.search(r"filename\*?=(?:UTF-8''|\")?([^\";]+)", disposition, re.I)
+        m = re.search(r'filename\*?=(?:UTF-8\'\'|")?([^";]+)', disposition, re.I)
         if m:
             try:
                 from urllib.parse import unquote
