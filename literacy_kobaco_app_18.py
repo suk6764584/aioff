@@ -132,6 +132,26 @@ def _render_index_kobaco_v18():
   margin-top:6px!important;
   min-height:15px!important;
 }
+
+/* LOGIN ON일 때 큰 OFF 전용 박스는 없애고, 작은 로그아웃 링크만 남긴다. */
+.aioff-auth-dock.is-on .aioff-auth-links{
+  position:static!important;
+  width:auto!important;height:auto!important;
+  padding:2px 0 0!important;margin:0!important;
+  display:flex!important;align-items:center!important;justify-content:flex-end!important;
+  background:transparent!important;border:0!important;border-radius:0!important;
+  box-shadow:none!important;gap:0!important;
+}
+.aioff-auth-dock.is-on .aioff-auth-links span{display:none!important}
+.aioff-auth-dock.is-on .aioff-auth-links button,
+.aioff-auth-dock.is-on .aioff-auth-links button:first-of-type{
+  width:auto!important;height:auto!important;min-width:0!important;min-height:0!important;
+  padding:0!important;margin:0!important;border:0!important;border-radius:0!important;
+  background:transparent!important;color:#736d66!important;
+  font-size:8px!important;line-height:1.2!important;font-weight:700!important;
+  text-decoration:none!important;cursor:pointer!important;
+}
+.aioff-auth-dock.is-on .aioff-auth-links button:hover{text-decoration:underline!important}
 </style>
 <script>
 (() => {
@@ -229,6 +249,34 @@ def _render_index_kobaco_v18():
   document.addEventListener('mousedown',e=>{
     if(!e.target.closest?.('.aioff-school-search')) closeList();
   },true);
+})();
+
+/* 회원가입 API는 세션 쿠키를 즉시 발급한다. 성공 문구가 뜨면 UI도 즉시 LOGIN ON으로 동기화한다. */
+(() => {
+  const message=document.getElementById('aioff-register-message');
+  if(!message) return;
+
+  async function syncRegisteredLogin(){
+    if(!message.classList.contains('ok')) return;
+    try{
+      const r=await fetch('/api/auth/me',{credentials:'same-origin'});
+      if(!r.ok) return;
+      const data=await r.json();
+      if(!data.logged_in) return;
+      const dock=document.querySelector('.aioff-auth-dock');
+      if(!dock) return;
+      dock.classList.add('is-on');
+      const state=dock.querySelector('.aioff-auth-state');
+      if(state) state.textContent='LOGIN ON';
+      const links=dock.querySelector('.aioff-auth-links');
+      if(links && !links.querySelector('[data-auth-logout]')){
+        links.innerHTML='<button type="button" data-auth-logout>로그아웃</button>';
+      }
+    }catch(e){}
+  }
+
+  const observer=new MutationObserver(syncRegisteredLogin);
+  observer.observe(message,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['class']});
 })();
 </script>
 '''
