@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import re
+import shutil
 import sqlite3
+import tempfile
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -83,7 +84,14 @@ def chunk_pages(
     return chunks
 
 
-def _pdf_chunks(source: str | Path | io.BytesIO, section: str) -> list[dict[str, Any]]:
+def _rewind(source: Any) -> None:
+    seek = getattr(source, "seek", None)
+    if callable(seek):
+        seek(0)
+
+
+def _pdf_chunks(source: Any, section: str) -> list[dict[str, Any]]:
+    _rewind(source)
     reader = PdfReader(source)
     pages: list[tuple[int, str]] = []
     for page_no, page in enumerate(reader.pages, start=1):
@@ -114,7 +122,8 @@ def _numeric_key(name: str) -> tuple[int, str]:
     return (int(m.group(1)) if m else 10**9, name)
 
 
-def _pptx_chunks(source: str | Path | io.BytesIO, section: str) -> list[dict[str, Any]]:
+def _pptx_chunks(source: Any, section: str) -> list[dict[str, Any]]:
+    _rewind(source)
     pages: list[tuple[int, str]] = []
     with zipfile.ZipFile(source) as zf:
         slide_names = sorted(
@@ -130,7 +139,8 @@ def _pptx_chunks(source: str | Path | io.BytesIO, section: str) -> list[dict[str
     return chunk_pages(pages, section=section)
 
 
-def _hwpx_chunks(source: str | Path | io.BytesIO, section: str) -> list[dict[str, Any]]:
+def _hwpx_chunks(source: Any, section: str) -> list[dict[str, Any]]:
+    _rewind(source)
     pages: list[tuple[int, str]] = []
     with zipfile.ZipFile(source) as zf:
         section_names = sorted(
@@ -155,24 +165,37 @@ def _decode_text(data: bytes) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
-def _extract_bytes(
-    data: bytes,
+def _read_all(source: Any) -> bytes:
+    if isinstance(source, (str, Path)):
+        return Path(source).read_bytes()
+    _rewind(source)
+    return source.read()
+
+
+def _extract_source(
+    source: Any,
     suffix: str,
     section: str,
     *,
     depth: int = 0,
 ) -> tuple[list[dict[str, Any]], Counter[str]]:
+    """Extract one source without loading large ZIP/PPT members into RAM.
+
+    Archive members are copied to a SpooledTemporaryFile. Small members stay in
+    memory and large members spill to disk automatically, preventing the
+    MemoryError seen on large PPT ZIP packages.
+    """
     suffix = suffix.lower()
     unsupported: Counter[str] = Counter()
 
     if suffix == ".pdf":
-        return _pdf_chunks(io.BytesIO(data), section), unsupported
+        return _pdf_chunks(source, section), unsupported
     if suffix == ".pptx":
-        return _pptx_chunks(io.BytesIO(data), section), unsupported
+        return _pptx_chunks(source, section), unsupported
     if suffix == ".hwpx":
-        return _hwpx_chunks(io.BytesIO(data), section), unsupported
+        return _hwpx_chunks(source, section), unsupported
     if suffix == ".txt":
-        text = _decode_text(data)
+        text = _decode_text(_read_all(source))
         return chunk_pages([(1, text)], section=section), unsupported
     if suffix != ".zip":
         unsupported[suffix or "(none)"] += 1
@@ -182,40 +205,42 @@ def _extract_bytes(
         unsupported[".zip(depth-limit)"] += 1
         return [], unsupported
 
+    _rewind(source)
     chunks: list[dict[str, Any]] = []
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+    with zipfile.ZipFile(source) as zf:
         for info in zf.infolist():
             if info.is_dir():
                 continue
             member = Path(info.filename)
             member_suffix = member.suffix.lower()
             if member_suffix not in SUPPORTED_TEXT_EXTENSIONS:
-                # Keep a complete inventory of non-text/RAG members without trying
-                # to infer content from them.
                 unsupported[member_suffix or "(none)"] += 1
                 continue
+
             member_section = f"{section} :: {info.filename}"
-            child_chunks, child_unsupported = _extract_bytes(
-                zf.read(info), member_suffix, member_section, depth=depth + 1
-            )
+            with zf.open(info) as src, tempfile.SpooledTemporaryFile(
+                max_size=16 * 1024 * 1024,
+                mode="w+b",
+            ) as tmp:
+                shutil.copyfileobj(src, tmp, length=1024 * 1024)
+                tmp.seek(0)
+                child_chunks, child_unsupported = _extract_source(
+                    tmp,
+                    member_suffix,
+                    member_section,
+                    depth=depth + 1,
+                )
             chunks.extend(child_chunks)
             unsupported.update(child_unsupported)
+
     return chunks, unsupported
 
 
 def extract_file(path: Path) -> tuple[list[dict[str, Any]], Counter[str]]:
     suffix = path.suffix.lower()
-    if suffix == ".pdf":
-        return _pdf_chunks(str(path), path.name), Counter()
-    if suffix == ".pptx":
-        return _pptx_chunks(str(path), path.name), Counter()
-    if suffix == ".hwpx":
-        return _hwpx_chunks(str(path), path.name), Counter()
-    if suffix == ".txt":
-        return chunk_pages([(1, _decode_text(path.read_bytes()))], section=path.name), Counter()
-    if suffix == ".zip":
-        return _extract_bytes(path.read_bytes(), suffix, path.name)
-    return [], Counter({suffix or "(none)": 1})
+    if suffix not in SUPPORTED_TEXT_EXTENSIONS:
+        return [], Counter({suffix or "(none)": 1})
+    return _extract_source(path, suffix, path.name)
 
 
 def reset_chunks(db: EducationDB) -> None:
