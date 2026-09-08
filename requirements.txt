@@ -3,3 +3,6 @@ uvicorn==0.52.4
 google-genai
 groq
 duckdb
+requests
+beautifulsoup4
+pypdf
