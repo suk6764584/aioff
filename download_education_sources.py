@@ -25,8 +25,74 @@ DETAIL_FILE_RE = re.compile(
 )
 
 
+def archive_id_from_card(card) -> str:
+    for node in card.find_all(["a", "button"]):
+        raw = " ".join(
+            (
+                str(node.get("href") or ""),
+                str(node.get("onclick") or ""),
+            )
+        )
+        match = DETAIL_ID_RE.search(raw)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def crawl_materials_with_archive_ids(
+    session: requests.Session,
+    max_pages: int,
+) -> list[dict]:
+    """Crawl list cards once and use the stable ARC id as the DB source key.
+
+    Thumbnail/image URLs on this archive contain request-varying values, so they
+    must never be used as persistent material identity.  The ARC id is the
+    canonical identity used by the site's own fn_detail() function.
+    """
+    all_rows: dict[str, dict] = {}
+    previous_signature = None
+
+    for page in range(1, max_pages + 1):
+        response = session.get(build.LIST_URL, params={"pageIndex": page}, timeout=30)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+        cards = build.material_containers(soup)
+        page_rows: list[dict] = []
+
+        for card in cards:
+            row = build.parse_card(card, page)
+            if not row.get("title"):
+                continue
+
+            archive_id = archive_id_from_card(card)
+            if not archive_id:
+                raise RuntimeError(
+                    f"stable archive id missing on page {page}: {row['title']}"
+                )
+
+            row["archive_id"] = archive_id
+            row["source_key"] = archive_id
+            row["source_url"] = f"{DETAIL_URL}?searchArchiveId={archive_id}"
+            page_rows.append(row)
+
+        signature = tuple(row["archive_id"] for row in page_rows)
+        if not page_rows:
+            break
+        if signature == previous_signature:
+            break
+        previous_signature = signature
+
+        for row in page_rows:
+            all_rows[row["archive_id"]] = row
+
+        print(f"page {page}: {len(page_rows)} items / cumulative {len(all_rows)}")
+        time.sleep(0.12)
+
+    return list(all_rows.values())
+
+
 def download_source(session: requests.Session, row: dict, out_dir: Path) -> dict:
-    """Download one archive attachment while preserving the filename shown by the source page."""
+    """Download one archive attachment while preserving the source-page filename."""
     url = str(row.get("download_url") or "").strip()
     if not url:
         return {
@@ -89,68 +155,25 @@ def download_source(session: requests.Session, row: dict, out_dir: Path) -> dict
     }
 
 
-def reset_generated_data(db_path: Path, files_dir: Path) -> None:
+def remove_db_files(db_path: Path) -> None:
     for candidate in (
         db_path,
         Path(str(db_path) + "-wal"),
         Path(str(db_path) + "-shm"),
     ):
         candidate.unlink(missing_ok=True)
+
+
+def reset_generated_data(db_path: Path, files_dir: Path) -> None:
+    remove_db_files(db_path)
     if files_dir.exists():
         shutil.rmtree(files_dir)
-
-
-def detail_id_index(session: requests.Session, max_pages: int) -> dict[str, str]:
-    """Map the same list-view source_key used by the DB to the archive's stable ARC id."""
-    out: dict[str, str] = {}
-    previous_signature = None
-
-    for page in range(1, max_pages + 1):
-        response = session.get(build.LIST_URL, params={"pageIndex": page}, timeout=30)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, "html.parser")
-        cards = build.material_containers(soup)
-        rows = []
-
-        for card in cards:
-            row = build.parse_card(card, page)
-            if not row.get("source_key"):
-                continue
-
-            archive_id = ""
-            for node in card.find_all(["a", "button"]):
-                raw = " ".join(
-                    (
-                        str(node.get("href") or ""),
-                        str(node.get("onclick") or ""),
-                    )
-                )
-                match = DETAIL_ID_RE.search(raw)
-                if match:
-                    archive_id = match.group(1)
-                    break
-
-            rows.append((row["source_key"], archive_id))
-
-        signature = tuple(key for key, _ in rows)
-        if not rows or signature == previous_signature:
-            break
-        previous_signature = signature
-
-        for key, archive_id in rows:
-            if archive_id:
-                out[key] = archive_id
-
-        time.sleep(0.12)
-
-    return out
 
 
 def discover_detail_attachments(
     session: requests.Session,
     archive_id: str,
 ) -> list[dict]:
-    """Read a detail page and return fileDown controls with explicit filenames."""
     response = session.post(
         DETAIL_URL,
         data={"searchArchiveId": archive_id},
@@ -173,12 +196,11 @@ def discover_detail_attachments(
         if not download_url:
             continue
 
-        item = {
+        by_url[download_url] = {
             "filename": filename,
             "download_url": download_url,
             "action_raw": raw,
         }
-        by_url[download_url] = item
 
     return list(by_url.values())
 
@@ -193,7 +215,10 @@ def merge_attachments(existing: list[dict], discovered: list[dict]) -> tuple[lis
 
         match = None
         if url:
-            match = next((x for x in merged if str(x.get("download_url") or "") == url), None)
+            match = next(
+                (x for x in merged if str(x.get("download_url") or "") == url),
+                None,
+            )
         if match is None:
             match = next(
                 (
@@ -221,16 +246,13 @@ def merge_attachments(existing: list[dict], discovered: list[dict]) -> tuple[lis
 def enrich_from_detail_pages(
     session: requests.Session,
     rows: list[dict],
-    max_pages: int,
 ) -> tuple[int, int, int]:
-    """Enrich every school material from its detail page before download."""
-    archive_ids = detail_id_index(session, max_pages)
     detail_pages = 0
     detail_errors = 0
     added_total = 0
 
     for idx, row in enumerate(rows, start=1):
-        archive_id = archive_ids.get(row["source_key"], "")
+        archive_id = str(row.get("archive_id") or "")
         if not archive_id:
             detail_errors += 1
             print(f"detail id missing: {row['title']}")
@@ -261,6 +283,25 @@ def enrich_from_detail_pages(
     return detail_pages, added_total, detail_errors
 
 
+def prune_orphan_material_dirs(files_dir: Path, valid_ids: set[int]) -> int:
+    """Remove only top-level generated material directories whose numeric id is stale."""
+    if not files_dir.exists():
+        return 0
+
+    removed = 0
+    for path in files_dir.iterdir():
+        if not path.is_dir():
+            continue
+        match = re.match(r"^(\d{4})_", path.name)
+        if not match:
+            continue
+        material_id = int(match.group(1))
+        if material_id not in valid_ids:
+            shutil.rmtree(path)
+            removed += 1
+    return removed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Download AI OFF school-target education source files"
@@ -268,7 +309,12 @@ def main() -> int:
     parser.add_argument(
         "--reset",
         action="store_true",
-        help="remove the generated education DB/files before rebuilding",
+        help="remove generated education DB and downloaded files before rebuilding",
+    )
+    parser.add_argument(
+        "--rebuild-db",
+        action="store_true",
+        help="rebuild only the education DB while preserving already downloaded files",
     )
     parser.add_argument(
         "--db",
@@ -285,10 +331,15 @@ def main() -> int:
     parser.add_argument("--max-pages", type=int, default=40)
     args = parser.parse_args()
 
+    if args.reset and args.rebuild_db:
+        raise SystemExit("ERROR: use only one of --reset or --rebuild-db")
+
     db_path = Path(args.db)
     files_dir = Path(args.files_dir)
     if args.reset:
         reset_generated_data(db_path, files_dir)
+    elif args.rebuild_db:
+        remove_db_files(db_path)
 
     session = requests.Session()
     session.headers.update(
@@ -298,26 +349,24 @@ def main() -> int:
         }
     )
 
-    all_rows = build.crawl_materials(session, args.max_pages)
+    all_rows = crawl_materials_with_archive_ids(session, args.max_pages)
     rows = build.school_materials(all_rows, build.DEFAULT_TARGETS)
     if len(all_rows) < 350 or len(rows) < 130:
         raise SystemExit(
             f"ERROR: crawl gate failed: all={len(all_rows)}, school={len(rows)}"
         )
 
-    detail_pages, detail_added, detail_errors = enrich_from_detail_pages(
-        session,
-        rows,
-        args.max_pages,
-    )
+    detail_pages, detail_added, detail_errors = enrich_from_detail_pages(session, rows)
 
     db = EducationDB(db_path)
     extension_counts: Counter[str] = Counter()
     status_counts: Counter[str] = Counter()
     attachment_count = 0
+    valid_material_ids: set[int] = set()
 
     for idx, row in enumerate(rows, start=1):
         material_id = db.upsert_material(row)
+        valid_material_ids.add(material_id)
         material_dir = (
             files_dir
             / f"{material_id:04d}_{build.safe_filename(row['title'])[:80]}"
@@ -341,6 +390,10 @@ def main() -> int:
     status = db.status()
     db.close()
 
+    pruned_dirs = 0
+    if args.rebuild_db and not detail_errors and not status_counts.get("download_error", 0):
+        pruned_dirs = prune_orphan_material_dirs(files_dir, valid_material_ids)
+
     print("\n=== EDUCATION SOURCE DOWNLOAD ===")
     print(f"all materials             : {len(all_rows)}")
     print(f"school materials          : {len(rows)}")
@@ -350,6 +403,7 @@ def main() -> int:
     print(f"attachment records        : {attachment_count}")
     print("status counts             :", dict(sorted(status_counts.items())))
     print("extension counts          :", dict(sorted(extension_counts.items())))
+    print(f"stale material dirs pruned: {pruned_dirs}")
     print("db status                 :", status)
 
     if (
