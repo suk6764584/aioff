@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 
@@ -23,10 +24,11 @@ def _education_cases() -> list[dict]:
     conn = sqlite3.connect(EDU_DB)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        """
+        '''
         SELECT
           m.id, m.title, m.target, m.year, m.material_type,
-          m.topics_json, m.source_url, COUNT(c.id) AS chunk_count
+          m.topics_json, m.source_url, COUNT(c.id) AS chunk_count,
+          SUM(CASE WHEN c.embedding IS NOT NULL THEN 1 ELSE 0 END) AS embedded_chunk_count
         FROM materials m
         JOIN chunks c ON c.material_id=m.id
         GROUP BY m.id
@@ -40,7 +42,7 @@ def _education_cases() -> list[dict]:
           m.year DESC,
           m.title
         LIMIT 60
-        """
+        '''
     ).fetchall()
 
     old_cases = flow.CASE_LIBRARY.get("deepfake") or flow.CASE_LIBRARY.get("news") or []
@@ -52,7 +54,13 @@ def _education_cases() -> list[dict]:
     cases: list[dict] = []
     for row in rows:
         snippets = conn.execute(
-            "SELECT text FROM chunks WHERE material_id=? ORDER BY id LIMIT 3",
+            '''
+            SELECT text
+            FROM chunks
+            WHERE material_id=?
+            ORDER BY CASE WHEN embedding IS NOT NULL THEN 0 ELSE 1 END, id
+            LIMIT 3
+            ''',
             (row["id"],),
         ).fetchall()
         clues = []
@@ -104,20 +112,66 @@ def _education_cases() -> list[dict]:
                     {"label": "연도", "value": year or "-"},
                     {"label": "자료유형", "value": material_type or "-"},
                     {"label": "주제", "value": " · ".join(topics) if topics else "-"},
-                    {"label": "추출 청크", "value": str(int(row["chunk_count"]))},
+                    {
+                        "label": "임베딩",
+                        "value": f"{int(row['embedded_chunk_count'] or 0)}/{int(row['chunk_count'])}",
+                    },
                 ],
                 "data_note": "디지털윤리 교육자료실에서 수집·추출한 초·중·고 대상 공식 교육자료를 사용합니다.",
+                "education_material_id": int(row["id"]),
                 "education_target": target,
                 "education_year": year,
                 "education_material_type": material_type,
                 "education_topics": topics,
                 "education_chunk_count": int(row["chunk_count"]),
+                "education_embedded_chunk_count": int(row["embedded_chunk_count"] or 0),
             }
         )
         cases.append(case)
 
     conn.close()
     return cases
+
+
+def _education_fts_context(case: dict, user_message: str, limit: int = 4) -> list[str]:
+    # Retrieve grounded chunks from the selected official material without any API call.
+    material_id = int(case.get("education_material_id") or 0)
+    if not material_id or not EDU_DB.exists():
+        return [str(x) for x in (case.get("clues") or []) if str(x).strip()][:limit]
+
+    tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", str(user_message or ""))
+    tokens = list(dict.fromkeys(tokens))[:10]
+    if not tokens:
+        return [str(x) for x in (case.get("clues") or []) if str(x).strip()][:limit]
+
+    match = " OR ".join(f'"{token.replace(chr(34), " ")}"' for token in tokens)
+    conn = sqlite3.connect(EDU_DB)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            '''
+            SELECT c.text, c.page_start, c.page_end, bm25(chunks_fts) AS rank
+            FROM chunks_fts
+            JOIN chunks c ON c.id=chunks_fts.rowid
+            WHERE chunks_fts MATCH ? AND c.material_id=?
+            ORDER BY rank
+            LIMIT ?
+            ''',
+            (match, material_id, limit),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+
+    context = []
+    for row in rows:
+        text = " ".join(str(row["text"] or "").split())
+        if text:
+            context.append(text[:650])
+    if context:
+        return context
+    return [str(x) for x in (case.get("clues") or []) if str(x).strip()][:limit]
 
 
 EDUCATION_CASES = _education_cases()
@@ -160,8 +214,9 @@ def _public_case_v15(case):
     data = dict(_OLD_PUBLIC_CASE(case))
     if str(case.get("id") or "").startswith("education_"):
         for key in (
-            "source_url", "education_target", "education_year",
+            "source_url", "education_material_id", "education_target", "education_year",
             "education_material_type", "education_topics", "education_chunk_count",
+            "education_embedded_chunk_count",
         ):
             data[key] = case.get(key, "")
     return data
@@ -169,8 +224,9 @@ def _public_case_v15(case):
 
 flow._public_case = _public_case_v15
 
-# v10 학습 프롬프트는 기존 두 KOBACO 주제에 그대로 두고,
-# 교육자료 사례에서만 대상 표현을 초·중·고 전체로 바로잡습니다.
+# v10 학습 프롬프트는 기존 KOBACO 주제에 그대로 두고,
+# 교육자료 사례에서만 실제 교육자료 청크를 추가 근거로 넣습니다.
+# 이 단계는 API를 쓰지 않는 FTS 검색이므로 임베딩이 일부만 완료돼도 동작합니다.
 try:
     v10 = previous.previous.v11.previous
     _OLD_LEARNING_PROMPT = v10._learning_prompt
@@ -179,6 +235,20 @@ try:
         prompt = _OLD_LEARNING_PROMPT(session_id, user_message, lesson_id, case_id, case)
         if str(case_id).startswith("education_"):
             prompt = prompt.replace("초등 고학년~중학생", "초·중·고 학생")
+            evidence = _education_fts_context(case, user_message)
+            evidence_block = "\n".join(f"- {item}" for item in evidence) or "- 검색된 근거 없음"
+            prompt += f'''
+
+[공식 교육자료 검색 근거]
+대상: {case.get('education_target') or '-'}
+자료명: {case.get('title') or '-'}
+{evidence_block}
+
+추가 규칙:
+- 위 공식 교육자료 검색 근거에 없는 내용을 해당 안내서에 적혀 있다고 말하지 않는다.
+- 학생의 답을 대신 완성하지 말고, 근거를 짚은 뒤 학생이 다시 판단하게 한다.
+- 자료의 대상 학교급과 학생 수준을 고려해 표현 난이도를 조절한다.
+'''
         return prompt
 
     v10._learning_prompt = _learning_prompt_v15
@@ -248,6 +318,28 @@ def _render_index_kobaco_v15():
     }catch(e){return null;}
   }
 
+  function schoolMatches(c,user){
+    const target=String(c.education_target||'');
+    if(!user?.school_level) return true;
+    if(user.school_level==='초') return target.includes('초');
+    if(user.school_level==='중') return target.includes('중');
+    if(user.school_level==='고') return target.includes('고');
+    return true;
+  }
+
+  function gradeScore(c,user){
+    const text=`${c.education_target||''} ${c.title||''}`;
+    const grade=Number(user?.grade||0);
+    if(user?.school_level==='초'){
+      if(grade>0 && grade<=3 && /(저학년|1.?3학년|1~3학년)/.test(text)) return 4;
+      if(grade>=4 && /(고학년|4.?6학년|4~6학년)/.test(text)) return 4;
+      if(/초등/.test(text)) return 2;
+    }
+    if(user?.school_level==='중' && /중등|중학생/.test(text)) return 2;
+    if(user?.school_level==='고' && /고등|고등학생/.test(text)) return 2;
+    return 1;
+  }
+
   document.addEventListener('click',async e=>{
     const card=e.target.closest?.('.lesson-card');
     if(!card) return;
@@ -260,9 +352,12 @@ def _render_index_kobaco_v15():
     }
     const lesson=card.dataset.lesson;
     if(lesson==='deepfake' && allEducationCases.length){
-      const token=user.school_level==='초'?'초등':user.school_level==='중'?'중등':user.school_level==='고'?'고등':'';
-      const filtered=token?allEducationCases.filter(c=>String(c.education_target||'').includes(token)):allEducationCases;
-      fixedTopicCases.deepfake=filtered.length?filtered:allEducationCases;
+      const filtered=allEducationCases.filter(c=>schoolMatches(c,user));
+      const usable=(filtered.length?filtered:allEducationCases)
+        .map((c,i)=>({c,i,s:gradeScore(c,user)}))
+        .sort((a,b)=>b.s-a.s||a.i-b.i)
+        .map(x=>x.c);
+      fixedTopicCases.deepfake=usable;
       delete fixedSamples.deepfake;
     }
     selectedLesson=lesson;
