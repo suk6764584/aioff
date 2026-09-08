@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from urllib.parse import quote, urljoin, urlparse
 
 import requests
@@ -20,7 +19,7 @@ _HEADERS = {
 
 
 def _decode_google_news_url(source_url: str) -> str:
-    """Resolve a Google News RSS article URL to the publisher URL."""
+    """Google News RSS 중간 주소를 실제 언론사 기사 주소로 해석한다."""
     try:
         parsed = urlparse(source_url)
         if not parsed.netloc.endswith("news.google.com"):
@@ -126,15 +125,12 @@ def _extract_article_paragraphs(soup: BeautifulSoup) -> str:
 
     candidates = []
     for root in roots:
-        ps = root.find_all("p")
-        if ps:
-            candidates.extend(ps)
-        else:
-            candidates.append(root)
+        paragraphs = root.find_all("p")
+        candidates.extend(paragraphs if paragraphs else [root])
     if not candidates:
         candidates = soup.find_all("p")
 
-    paragraphs: list[str] = []
+    out: list[str] = []
     total = 0
     boilerplate = (
         "무단전재", "재배포 금지", "저작권자", "기사제보", "구독", "로그인",
@@ -142,15 +138,15 @@ def _extract_article_paragraphs(soup: BeautifulSoup) -> str:
     )
     for node in candidates:
         text = runtime._clean_text(node.get_text(" ", strip=True))
-        if len(text) < 28 or text in paragraphs:
+        if len(text) < 28 or text in out:
             continue
         if any(term.lower() in text.lower() for term in boilerplate) and len(text) < 160:
             continue
-        paragraphs.append(text)
+        out.append(text)
         total += len(text)
-        if total >= 14000 or len(paragraphs) >= 42:
+        if total >= 14000 or len(out) >= 42:
             break
-    return "\n".join(paragraphs)[:14500]
+    return "\n".join(out)[:14500]
 
 
 def _article_meta_from_url(url: str) -> dict:
@@ -164,7 +160,7 @@ def _article_meta_from_url(url: str) -> dict:
         result["resolved_url"] = response.url
 
         for attrs in (
-            {"property": "og:image"}, {"name": "twitter:image"}, {"property": "twitter:image"}
+            {"property": "og:image"}, {"name": "twitter:image"}, {"property": "twitter:image"},
         ):
             node = soup.find("meta", attrs=attrs)
             image = str(node.get("content") or "").strip() if node else ""
@@ -173,7 +169,7 @@ def _article_meta_from_url(url: str) -> dict:
                 break
 
         for attrs in (
-            {"property": "og:description"}, {"name": "description"}, {"name": "twitter:description"}
+            {"property": "og:description"}, {"name": "description"}, {"name": "twitter:description"},
         ):
             node = soup.find("meta", attrs=attrs)
             desc = runtime._clean_text(node.get("content") if node else "")
@@ -206,15 +202,16 @@ def _fetch_news_meta(case: dict) -> dict:
                 continue
             alt_resolved = _decode_google_news_url(alt_url)
             alt_meta = _article_meta_from_url(alt_resolved)
-            if len(runtime._clean_text(alt_meta.get("body") or "")) > len(runtime._clean_text(result.get("body") or "")):
-                if not result.get("image") and alt_meta.get("image"):
-                    result["image"] = alt_meta["image"]
-                result["body"] = alt_meta.get("body") or result.get("body")
-                result["description"] = alt_meta.get("description") or result.get("description")
-                result["content_source_url"] = alt_meta.get("resolved_url") or alt_resolved
-                result["content_source_publisher"] = str(alt.get("publisher") or "다른 언론사")
-                if len(runtime._clean_text(result.get("body") or "")) >= 900:
-                    break
+            if len(runtime._clean_text(alt_meta.get("body") or "")) <= len(runtime._clean_text(result.get("body") or "")):
+                continue
+            if not result.get("image") and alt_meta.get("image"):
+                result["image"] = alt_meta["image"]
+            result["body"] = alt_meta.get("body") or result.get("body")
+            result["description"] = alt_meta.get("description") or result.get("description")
+            result["content_source_url"] = alt_meta.get("resolved_url") or alt_resolved
+            result["content_source_publisher"] = str(alt.get("publisher") or "다른 언론사")
+            if len(runtime._clean_text(result.get("body") or "")) >= 900:
+                break
 
     runtime._NEWS_META_CACHE[case_id] = dict(result)
     return dict(result)
@@ -226,12 +223,12 @@ def _news_reading_limits(user: dict | None) -> tuple[int, int, str]:
     if level == "초" and grade <= 3:
         return 4, 5, "짧은 문장과 쉬운 말로 설명하되 사건의 핵심 인물·기관·숫자는 빼지 않는다."
     if level == "초":
-        return 5, 6, "어려운 용어는 쉬운 말로 바로 풀어 설명하되 중요한 고유명사·수치·핵심 용어는 그대로 남긴다."
+        return 5, 6, "어려운 용어는 쉬운 말로 풀되 중요한 고유명사·수치·핵심 용어는 그대로 남긴다."
     if level == "중":
         return 5, 7, "사건의 경과, 근거, 쟁점, 대응, 아직 확인할 부분을 나누어 충분히 설명한다."
     if level == "고":
         return 6, 8, "사실관계와 쟁점, 법·정책·기술 용어, 이해관계자의 주장과 불확실성을 충분히 보존한다."
-    return 5, 7, "원문을 따로 열지 않아도 사건의 핵심 사실과 쟁점을 이해할 수 있을 정도로 충분히 설명한다."
+    return 5, 7, "원문을 따로 열지 않아도 사건의 핵심 사실과 쟁점을 이해할 정도로 충분히 설명한다."
 
 
 def _news_study_pack(case: dict, user: dict | None) -> dict:
@@ -261,8 +258,7 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
 
     alternates = list(case.get("news_alternates") or [])
     alt_text = "\n".join(
-        f"- {x.get('publisher','')} | {x.get('title','')}"
-        for x in alternates[:4]
+        f"- {x.get('publisher','')} | {x.get('title','')}" for x in alternates[:4]
     ) or "- 동일 사건 다른 기사 메타데이터 없음"
 
     if len(source_text) >= 240:
@@ -280,15 +276,15 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
 {alt_text}
 
 작성 규칙:
-1. 단순한 3문장 요약이나 '제목만으로 판단하지 마라' 같은 일반론으로 끝내지 않는다. 학생이 이 화면만 읽어도 실제 사건의 중요한 내용을 파악할 수 있게 기사 내용을 충분히 살린다.
+1. 단순한 3문장 요약이나 일반론으로 끝내지 않는다. 학생이 이 화면만 읽어도 실제 사건의 중요한 내용을 파악할 수 있게 기사 내용을 충분히 살린다.
 2. reading은 {min_paragraphs}~{max_paragraphs}개 문단으로 작성한다. {paragraph_rule}
 3. 기사에 나온 사람·기관·기업·지역·날짜·수치·법령/정책명·기술명·핵심 쟁점 용어는 중요 정보이면 삭제하거나 모호한 일반어로 바꾸지 않는다. 어려운 용어는 원래 용어를 남긴 뒤 쉬운 말로 설명한다.
-4. 사건의 핵심을 가능한 범위에서 '무슨 일이 있었는지 → 구체적으로 확인된 내용 → 왜 문제가 되는지 → 관계기관/당사자의 대응 → 아직 확인되지 않았거나 논쟁 중인 부분' 순서로 이해할 수 있게 구성한다.
-5. 원문이 '검토', '의혹', '정황', '가능성', '주장'처럼 확정되지 않은 표현을 썼다면 반드시 그 불확실성을 보존한다. 추정을 사실로 바꾸지 않는다.
+4. 가능한 범위에서 '무슨 일이 있었는지 → 구체적으로 확인된 내용 → 왜 문제가 되는지 → 관계기관/당사자의 대응 → 아직 확인되지 않았거나 논쟁 중인 부분' 순서로 이해할 수 있게 구성한다.
+5. 원문이 '검토', '의혹', '정황', '가능성', '주장'처럼 확정되지 않은 표현을 썼다면 그 불확실성을 그대로 보존한다.
 6. 기사에 서로 다른 주체의 주장이나 인용이 있으면 누가 한 말인지 보존한다. 기자의 평가와 사실 진술을 섞지 않는다.
-7. 원문 문장을 길게 그대로 복사하지 말고 학생용 문장으로 재구성한다. 그러나 중요한 사실을 줄이기 위해 핵심 단어와 수치를 버리면 안 된다.
-8. 동일 사건 다른 보도 제목은 비교 관점을 잡는 데만 사용하고, 그 제목만으로 새로운 사실을 만들어내지 않는다.
-9. questions는 정확히 3개를 만든다. 모든 질문은 화면에 표시될 reading만 읽어도 답할 수 있어야 한다.
+7. 원문 문장을 길게 그대로 복사하지 말고 학생용 문장으로 재구성한다. 중요한 사실을 줄이기 위해 핵심 단어와 수치를 버리지 않는다.
+8. 동일 사건 다른 보도 제목은 비교 관점을 잡는 데만 사용하고 그 제목만으로 새로운 사실을 만들지 않는다.
+9. questions는 정확히 3개. 모든 질문은 화면에 표시될 reading만 읽어도 답할 수 있어야 한다.
 10. 질문은 단순 암기보다 사실/해석 구분, 근거 판단, 표현의 불확실성, 기사 비교 중 학생 수준에 맞는 사고를 한 가지씩 묻는다. 한 질문에 여러 요구를 몰아넣지 않는다.
 11. 기사 원문에만 있고 reading에서 빠진 세부 정보를 학생이 알아야 풀 수 있는 질문은 금지한다.
 
@@ -325,10 +321,50 @@ JSON 스키마에 맞춰 반환하라.'''
         "기사 원문에서 가장 먼저 확인해야 할 세부 정보는 무엇인가요?",
         "제목에 사실 표현과 해석·평가 표현이 함께 있다면 어떻게 구분할 수 있을까요?",
     ]
-    pack = {"reading": reading, "questions": questions, "resolved_url": meta.get("resolved_url") or case.get("source_url")}
+    pack = {
+        "reading": reading,
+        "questions": questions,
+        "resolved_url": meta.get("resolved_url") or case.get("source_url"),
+    }
     runtime._NEWS_PACK_CACHE[key] = dict(pack)
     return pack
 
 
+# 런타임의 기존 뉴스 라우트가 이 강화된 함수들을 사용하게 한다.
 runtime._fetch_news_meta = _fetch_news_meta
 runtime._news_study_pack = _news_study_pack
+
+
+# 기존 .chat-case-media img의 max-height:250px가 뉴스 큰 이미지에도 상속돼
+# 이미지 아래에 큰 빈 영역이 생기던 문제를 최종 렌더 단계에서만 교정한다.
+_RENDER_BEFORE_NEWS_LAYOUT = runtime._render_runtime_index
+
+
+def _render_news_layout() -> str:
+    page = _RENDER_BEFORE_NEWS_LAYOUT()
+    css = r'''
+<style>
+.aioff-news-hero{
+  height:clamp(260px,28vw,420px)!important;
+  min-height:0!important;
+  overflow:hidden!important;
+  background:#e9edf2!important;
+}
+.chat-case-media .aioff-news-hero img,
+.aioff-news-hero img{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  max-height:none!important;
+  object-fit:cover!important;
+  object-position:center center!important;
+}
+@media(max-width:900px){
+  .aioff-news-hero{height:260px!important}
+}
+</style>
+'''
+    return page.replace("</body>", css + "\n</body>")
+
+
+runtime._render_runtime_index = _render_news_layout
