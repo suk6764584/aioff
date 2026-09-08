@@ -12,7 +12,7 @@ from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
-import build_education_db as build
+import education_archive_parser as build
 from education_db import EducationDB
 
 
@@ -46,7 +46,7 @@ def crawl_materials_with_archive_ids(
     """Crawl list cards once and use the stable ARC id as the DB source key.
 
     Thumbnail/image URLs on this archive contain request-varying values, so they
-    must never be used as persistent material identity.  The ARC id is the
+    must never be used as persistent material identity. The ARC id is the
     canonical identity used by the site's own fn_detail() function.
     """
     all_rows: dict[str, dict] = {}
