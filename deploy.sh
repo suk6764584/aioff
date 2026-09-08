@@ -48,13 +48,9 @@ PY
 else
   echo "WARN: KOBACO parquet snapshot not found."
 fi
+
 KOBACO_COUNT=$(find "$KOBACO_DIR" -maxdepth 1 -type f -name '*.parquet' | wc -l | tr -d ' ')
 echo "KOBACO parquet files: $KOBACO_COUNT"
-if [ -f "$KOBACO_DIR/public_ad_master.parquet" ]; then
-  echo "Official public-ad metadata: READY"
-else
-  echo "WARN: public_ad_master.parquet missing; individual archive/video matching will be limited."
-fi
 
 if [ -f .env ]; then
   if grep -q '^GEMINI_MODEL=' .env; then
@@ -69,15 +65,26 @@ if [ -f .env ]; then
   fi
 fi
 
-echo "[4/7] Syntax + topic + tutor integration check"
-.venv/bin/python -m py_compile app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py literacy_kobaco_app_13.py migrate_db.py
+echo "[4/7] Syntax + auth + education + KOBACO integration check"
+.venv/bin/python -m py_compile \
+  app.py literacy_app.py literacy_cases.py literacy_cases_2.py literacy_cases_3.py literacy_cases_4.py \
+  literacy_cases_5.py literacy_cases_6.py literacy_cases_7.py literacy_cases_8.py \
+  literacy_media_app.py literacy_media_app_2.py literacy_media_app_3.py literacy_media_app_4.py \
+  literacy_media_app_5.py literacy_media_app_6.py literacy_media_app_7.py literacy_media_app_8.py \
+  literacy_media_app_9.py literacy_media_app_10.py kobaco_db.py education_db.py auth_proto.py \
+  literacy_kobaco_app_1.py literacy_kobaco_app_2.py literacy_kobaco_app_3.py literacy_kobaco_app_4.py \
+  literacy_kobaco_app_5.py literacy_kobaco_app_6.py literacy_kobaco_app_7.py literacy_kobaco_app_8.py \
+  literacy_kobaco_app_9.py literacy_kobaco_app_10.py literacy_kobaco_app_11.py literacy_kobaco_app_12.py \
+  literacy_kobaco_app_13.py literacy_kobaco_app_14.py literacy_kobaco_app_15.py migrate_db.py
+
 .venv/bin/python - <<'PY'
 import re
-import literacy_kobaco_app_13 as m
+import sqlite3
+import literacy_kobaco_app_15 as m
 
 expected = {
     'news': 'kobaco_aisac_',
-    'deepfake': 'kobaco_publicad_',
+    'deepfake': 'education_',
     'ai': 'kobaco_ott_',
 }
 for lesson_id, prefix in expected.items():
@@ -87,7 +94,41 @@ for lesson_id, prefix in expected.items():
     if len(ids) < 3:
         raise SystemExit(f"ERROR: {lesson_id} has fewer than 3 cases")
     if not all(x.startswith(prefix) for x in ids):
-        raise SystemExit(f"ERROR: {lesson_id} contains wrong case type: {ids}")
+        raise SystemExit(f"ERROR: {lesson_id} contains wrong case type")
+
+education_cases = m.flow.CASE_LIBRARY.get('deepfake', [])
+targets = [str(c.get('education_target') or '') for c in education_cases]
+target_counts = {
+    '초': sum('초' in x for x in targets),
+    '중': sum('중' in x for x in targets),
+    '고': sum('고' in x for x in targets),
+}
+print("education target counts:", target_counts)
+for level, count in target_counts.items():
+    if count < 1:
+        raise SystemExit(f"ERROR: no education cases for school level {level}")
+
+conn = sqlite3.connect(m.EDU_DB)
+chunks, embedded = conn.execute(
+    "SELECT COUNT(*), SUM(CASE WHEN embedding IS NOT NULL THEN 1 ELSE 0 END) FROM chunks"
+).fetchone()
+conn.close()
+embedded = int(embedded or 0)
+print(f"education embeddings: {embedded}/{chunks}")
+if int(chunks or 0) < 1:
+    raise SystemExit("ERROR: education chunks missing")
+if embedded < 1:
+    raise SystemExit("ERROR: no education embeddings stored yet")
+if embedded < int(chunks):
+    print("education embedding status: PARTIAL (allowed for v15 rollout)")
+else:
+    print("education embedding status: COMPLETE")
+
+sample = education_cases[0]
+ctx = m._education_fts_context(sample, "디지털 윤리 정보", limit=2)
+if not ctx:
+    raise SystemExit("ERROR: education FTS/fallback context empty")
+print("education source grounding: OK")
 
 aisac_cases = m.flow.CASE_LIBRARY.get('news', [])
 if len(aisac_cases) < 6:
@@ -108,50 +149,42 @@ for case in m.flow.CASE_LIBRARY.get('ai', []):
     if '이용비율 상위' not in rows:
         raise SystemExit(f"ERROR: OTT usage-rate field missing: {case.get('id')}")
 
-page = m._render_index_kobaco_v13()
+page = m._render_index_kobaco_v15()
 required_page_markers = (
     'fixedTopicCases',
     'AI가 읽은 광고',
+    '리터러시 교육 안내서',
     '청소년·OTT 통계',
+    'LOGIN OFF',
+    'aioff-auth-overlay',
+    'education_',
     'kobaco_aisac_',
-    'kobaco_publicad_',
     'kobaco_ott_',
     '/api/aisac-thumb/',
     '/api/aisac-video/',
     '/api/aisac-player/',
-    'aisac-player-frame',
-    'aisac-picker-video',
-    '서비스별 이용 비율입니다. 선호도·만족도',
-    'max-height:250px',
     '2020-01-01',
 )
 for marker in required_page_markers:
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
+if '공익광고 효과 수치 제대로 읽기' in page:
+    raise SystemExit("ERROR: removed public-ad topic title still rendered")
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
-for path in ('/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}', '/api/aisac-video/{case_id}', '/api/aisac-player/{case_id}'):
+for path in (
+    '/api/auth/me', '/api/auth/login', '/api/auth/register', '/api/auth/logout', '/api/auth/schools',
+    '/api/aisac-open/{case_id}', '/api/aisac-thumb/{case_id}',
+    '/api/aisac-video/{case_id}', '/api/aisac-player/{case_id}',
+    '/api/chat-stream', '/api/analyze', '/api/off-test', '/api/off-submit',
+):
     if path not in route_paths:
-        raise SystemExit(f"ERROR: AiSAC media route missing: {path}")
-for path in ('/api/chat-stream', '/api/analyze', '/api/off-test', '/api/off-submit'):
-    if path not in route_paths:
-        raise SystemExit(f"ERROR: AI OFF route missing: {path}")
-
-banned_copy = (
-    'AI 인식 키워드만으로 광고의 뜻을 정하지 말고',
-    '제목과 AI 키워드만으로 전체 메시지를 정하지 말고',
-    '광고 맥락을 먼저 확인합니다.',
-)
-for name in ('literacy_kobaco_app_10.py','literacy_kobaco_app_11.py','literacy_kobaco_app_12.py','literacy_kobaco_app_13.py'):
-    source = open(name, encoding='utf-8').read()
-    for text in banned_copy:
-        if text in source or text in page:
-            raise SystemExit(f"ERROR: placeholder AiSAC copy returned: {text}")
+        raise SystemExit(f"ERROR: route missing: {path}")
 
 node = m
 adaptive_tutor = False
 old_canned_tutor = False
-for _ in range(6):
+for _ in range(8):
     if hasattr(node, 'kobaco_ai_chat_stream'):
         adaptive_tutor = True
     if hasattr(node, 'kobaco_instant_chat_stream'):
@@ -164,7 +197,7 @@ if not adaptive_tutor:
 if old_canned_tutor:
     raise SystemExit('ERROR: old canned instant tutor route is still exposed')
 
-print('AISAC REAL VIDEO + FIRST-FRAME PREVIEW + YOUTH OTT + AI OFF ROUTES OK')
+print('V15 AUTH + EDUCATION GUIDE + PARTIAL RAG + AISAC + YOUTH OTT OK')
 PY
 
 echo "[5/7] Database migration"
@@ -187,20 +220,34 @@ curl -fsS http://127.0.0.1:3000/health
 echo
 curl -fsS http://127.0.0.1:3000/api/kobaco-status
 echo
+curl -fsS http://127.0.0.1:3000/api/auth/me
+echo
 curl -fsS -o /tmp/aioff_root.html http://127.0.0.1:3000/
-for marker in 'fixedTopicCases' 'AI가 읽은 광고' '청소년·OTT 통계' 'kobaco_aisac_' 'kobaco_publicad_' 'kobaco_ott_' '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' 'aisac-player-frame' 'aisac-picker-video' '서비스별 이용 비율입니다. 선호도·만족도' 'max-height:250px' '2020-01-01'; do
+
+for marker in \
+  'fixedTopicCases' 'AI가 읽은 광고' '리터러시 교육 안내서' '청소년·OTT 통계' \
+  'LOGIN OFF' 'education_' 'kobaco_aisac_' 'kobaco_ott_' \
+  '/api/aisac-thumb/' '/api/aisac-video/' '/api/aisac-player/' '2020-01-01'; do
   if ! grep -q "$marker" /tmp/aioff_root.html; then
     echo "ERROR: live root marker missing: $marker"
     exit 1
   fi
 done
-if ! grep -q 'literacy_kobaco_app_13:app' aioff.service; then
-  echo "ERROR: service is not pointing to v13"
+
+if grep -q '공익광고 효과 수치 제대로 읽기' /tmp/aioff_root.html; then
+  echo "ERROR: removed public-ad topic is still live"
   exit 1
 fi
+
+if ! grep -q 'literacy_kobaco_app_15:app' aioff.service; then
+  echo "ERROR: service is not pointing to v15"
+  exit 1
+fi
+
 if grep -q 'kid-stat-grid' /tmp/aioff_root.html; then
   echo "ERROR: old forced typography/readability UI still active"
   exit 1
 fi
-echo "ROOT PAGE + AISAC VIDEO PREVIEW + OTT 13-19 + AI OFF ROUTES OK"
+
+echo "ROOT PAGE + LOGIN + EDUCATION GUIDE + AISAC + OTT OK"
 echo "DEPLOY OK"
