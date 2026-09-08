@@ -51,15 +51,15 @@ fi
 
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
-  literacy_kobaco_app_20.py literacy_kobaco_app_19.py literacy_kobaco_app_18.py \
-  literacy_kobaco_app_17.py auth_proto.py education_db.py kobaco_db.py migrate_db.py \
-  education_archive_parser.py download_education_sources.py extract_education_sources.py \
-  embed_education_db.py
+  literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
+  literacy_kobaco_app_18.py literacy_kobaco_app_17.py auth_proto.py education_db.py \
+  kobaco_db.py migrate_db.py education_archive_parser.py download_education_sources.py \
+  extract_education_sources.py embed_education_db.py
 
 .venv/bin/python - <<'PY'
 import education_archive_parser
 import download_education_sources
-import literacy_kobaco_app_20 as m
+import literacy_kobaco_app_21 as m
 
 assert m.app is not None
 assert education_archive_parser.LIST_URL
@@ -79,7 +79,7 @@ for lesson_id, prefix in expected.items():
         raise SystemExit(f"ERROR: {lesson_id} contains unexpected case ids")
     print(f"{lesson_id}: {len(ids)} cases")
 
-page = m._render_index_kobaco_v20()
+page = m._render_index_kobaco_v21()
 for marker in (
     'AI가 읽은 광고',
     '리터러시 교육 안내서',
@@ -89,6 +89,10 @@ for marker in (
 ):
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
+if '<section class="process" aria-label="이용 순서">' in page:
+    raise SystemExit('ERROR: progress rail still rendered')
+if '<aside class="study-side">' in page:
+    raise SystemExit('ERROR: right study sidebar still rendered')
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
 for path in (
@@ -107,7 +111,7 @@ for path in (
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
 
-print('IMPORT + ROUTE + ROOT CHECK OK')
+print('V21 IMPORT + ROUTE + LAYOUT CHECK OK')
 PY
 
 .venv/bin/python migrate_db.py
@@ -139,9 +143,9 @@ echo
 curl -fsS --max-time 5 http://127.0.0.1:3000/api/auth/me
 echo
 
-if ! grep -q 'literacy_kobaco_app_20:app' /etc/systemd/system/aioff.service; then
-  echo "ERROR: service is not pointing to v20"
+if ! grep -q 'literacy_kobaco_app_21:app' /etc/systemd/system/aioff.service; then
+  echo "ERROR: service is not pointing to v21"
   exit 1
 fi
 
-echo "DEPLOY OK: literacy_kobaco_app_20"
+echo "DEPLOY OK: literacy_kobaco_app_21"
