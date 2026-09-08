@@ -44,7 +44,6 @@ def _education_cases() -> list[dict]:
           END,
           m.year DESC,
           m.title
-        LIMIT 60
         '''
     ).fetchall()
 
@@ -357,7 +356,6 @@ def _render_index_kobaco_v15():
 .aioff-auth-links button{min-height:34px!important;padding:7px 12px!important;border:1px solid #d2cbc2!important;border-radius:8px!important;background:#f4efe8!important;color:#3e3934!important;font-size:12px!important;font-weight:800!important;text-decoration:none!important}
 .aioff-auth-links button:first-of-type{background:#22201d!important;border-color:#22201d!important;color:#fff!important}
 .aioff-auth-links span{font-size:12px!important;font-weight:750!important;color:#57514b!important;margin-right:auto!important}
-
 #aioff-login-required{top:86px!important;min-width:500px!important;max-width:min(560px,calc(100vw - 32px))!important;min-height:82px!important;box-sizing:border-box!important;padding:17px 19px!important;gap:20px!important;border-radius:12px!important;font-size:13px!important;line-height:1.5!important;box-shadow:0 12px 34px rgba(35,29,23,.17)!important}
 #aioff-login-required b{display:inline-block!important;font-size:16px!important;line-height:1.35!important;margin-bottom:3px!important}
 #aioff-login-required button{min-width:92px!important;min-height:42px!important;padding:9px 15px!important;border-radius:8px!important;font-size:13px!important;font-weight:900!important}
@@ -428,26 +426,31 @@ def _render_index_kobaco_v15():
     }catch(e){return null;}
   }
 
+  function targetLabels(c){
+    return String(c?.education_target||'').split(/\s*(?:\/|,|·|ㆍ)\s*/).map(x=>x.trim()).filter(Boolean);
+  }
+
   function schoolMatches(c,user){
-    const target=String(c.education_target||'');
     if(!user?.school_level) return true;
-    if(user.school_level==='초') return target.includes('초');
-    if(user.school_level==='중') return target.includes('중');
-    if(user.school_level==='고') return target.includes('고');
-    return true;
+    const wanted=user.school_level==='초'?'초등':user.school_level==='중'?'중등':user.school_level==='고'?'고등':'';
+    if(!wanted) return true;
+    const labels=targetLabels(c);
+    return labels.includes(wanted)||labels.includes('전체 대상');
   }
 
   function gradeScore(c,user){
     const text=`${c.education_target||''} ${c.title||''}`;
+    const labels=targetLabels(c);
     const grade=Number(user?.grade||0);
     if(user?.school_level==='초'){
       if(grade>0 && grade<=3 && /(저학년|1.?3학년|1~3학년)/.test(text)) return 4;
       if(grade>=4 && /(고학년|4.?6학년|4~6학년)/.test(text)) return 4;
-      if(/초등/.test(text)) return 2;
+      if(labels.includes('초등')) return 2;
     }
-    if(user?.school_level==='중' && /중등|중학생/.test(text)) return 2;
-    if(user?.school_level==='고' && /고등|고등학생/.test(text)) return 2;
-    return 1;
+    if(user?.school_level==='중' && labels.includes('중등')) return 2;
+    if(user?.school_level==='고' && labels.includes('고등')) return 2;
+    if(labels.includes('전체 대상')) return 1;
+    return 0;
   }
 
   // 학교 검색 결과가 sample mode이면 사용자에게 정확히 표시합니다.
