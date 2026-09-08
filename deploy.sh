@@ -51,17 +51,19 @@ fi
 
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
-  aioff_ui.py literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
+  aioff_entry.py news_learning.py aioff_runtime.py aioff_ui.py \
+  literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
   literacy_kobaco_app_18.py literacy_kobaco_app_17.py auth_proto.py education_db.py \
-  kobaco_db.py migrate_db.py education_archive_parser.py download_education_sources.py \
+  kobaco_db.py education_archive_parser.py download_education_sources.py \
   extract_education_sources.py embed_education_db.py
 
 .venv/bin/python - <<'PY'
 import education_archive_parser
 import download_education_sources
+import aioff_entry as entry
 import aioff_ui as m
 
-assert m.app is not None
+assert entry.app is m.app
 assert education_archive_parser.LIST_URL
 assert download_education_sources.DETAIL_URL
 
@@ -113,10 +115,8 @@ for path in (
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
 
-print('UI IMPORT + ROUTE + LAYOUT CHECK OK')
+print('ENTRY + UI IMPORT + ROUTE + LAYOUT CHECK OK')
 PY
-
-.venv/bin/python migrate_db.py
 
 echo "[5/6] Install/restart service"
 /bin/cp -f aioff.service /etc/systemd/system/aioff.service
@@ -145,9 +145,9 @@ echo
 curl -fsS --max-time 5 http://127.0.0.1:3000/api/auth/me
 echo
 
-if ! grep -q 'aioff_ui:app' /etc/systemd/system/aioff.service; then
-  echo "ERROR: service is not pointing to aioff_ui"
+if ! grep -q 'aioff_entry:app' /etc/systemd/system/aioff.service; then
+  echo "ERROR: service is not pointing to aioff_entry"
   exit 1
 fi
 
-echo "DEPLOY OK: aioff_ui"
+echo "DEPLOY OK: aioff_entry"
