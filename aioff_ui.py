@@ -61,10 +61,9 @@ def _find_aisac_thumbnail(title: str) -> tuple[bytes, str] | None:
         )
         response.raise_for_status()
         text = response.text
-        plain_title = html.unescape(title)
-        pos = text.find(plain_title)
+        pos = text.find(html.unescape(title))
         if pos < 0:
-            compact = re.sub(r"\s+", "", plain_title)
+            compact = re.sub(r"\s+", "", html.unescape(title))
             compact_html = re.sub(r"\s+", "", html.unescape(text))
             compact_pos = compact_html.find(compact)
             pos = compact_pos if compact_pos >= 0 else len(text) // 2
@@ -136,13 +135,15 @@ def aioff_aisac_thumb(case_id: str):
     if result:
         data, media = result
         return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=3600"})
-    return Response(_aisac_fallback_svg(str(case.get("title") or "")), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=600"})
+    return Response(
+        _aisac_fallback_svg(str(case.get("title") or "")),
+        media_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=600"},
+    )
 
 
 # ---------------------------------------------------------------------------
-# Education case pool: 3 cards are a sample, not the entire archive.
-# Filter by the logged-in school level, but keep shared middle/high and youth
-# materials instead of collapsing the pool to only a few exact labels.
+# Education case pool
 # ---------------------------------------------------------------------------
 _TEACHER_TITLE_TERMS = ("교사용", "지도서", "강사용", "수업지도", "지도안", "교수학습")
 _ADULT_TARGET_TERMS = ("교사", "교직원", "학부모", "보호자", "성인", "대학생")
@@ -159,8 +160,7 @@ def _education_profile_score(case: dict, user: dict | None) -> int | None:
     grade = int(user.get("grade") or 0)
     raw = str(case.get("education_target") or "")
     target = re.sub(r"[\s·ㆍ,/()\-]", "", raw)
-    adult = any(term in target for term in _ADULT_TARGET_TERMS)
-    if adult:
+    if any(term in target for term in _ADULT_TARGET_TERMS):
         return None
 
     elementary = any(term in target for term in ("초등", "초등학생", "초등학교"))
@@ -173,26 +173,23 @@ def _education_profile_score(case: dict, user: dict | None) -> int | None:
             return None
         score = 8
         text = f"{raw} {title}"
-        if grade and grade <= 3 and any(x in text for x in ("저학년", "1~3", "1-3", "1·2·3")):
+        if grade <= 3 and any(x in text for x in ("저학년", "1~3", "1-3", "1·2·3")):
             score += 4
         elif grade >= 4 and any(x in text for x in ("고학년", "4~6", "4-6", "4·5·6")):
             score += 4
         return score
-
     if level == "중":
         if middle:
             return 9 if not high else 8
         if youth and not elementary:
             return 5
         return None
-
     if level == "고":
         if high:
             return 9 if not middle else 8
         if youth and not elementary:
             return 5
         return None
-
     return 1
 
 
@@ -218,9 +215,132 @@ def aioff_education_cases(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Education tutor: evaluate the current question first. Wrong/incomplete answers
-# stay on the same question and get progressively stronger hints.
-# Gemini is primary through generate_structured_with_fallback; Groq is fallback.
+# Grade-adaptive education card generation
+# ---------------------------------------------------------------------------
+_ADAPTIVE_PACK_CACHE: dict[tuple[int, str, int], dict] = {}
+
+
+def _learning_level_rules(user: dict | None) -> tuple[str, int]:
+    level = str((user or {}).get("school_level") or "")
+    grade = int((user or {}).get("grade") or 0)
+    if level == "초" and grade <= 3:
+        return (
+            "초등 1~3학년 수준. 짧고 구체적인 말로 설명한다. 한 질문에는 한 가지 생각만 묻고, "
+            "생활 속 행동이나 눈에 보이는 상황을 중심으로 묻는다. 어려운 추상어·전문용어를 피한다. "
+            "학생이 1~2문장으로 답할 수 있게 한다.",
+            2,
+        )
+    if level == "초":
+        return (
+            "초등 4~6학년 수준. 쉬운 말로 사실과 의견, 원인과 결과를 구분하게 한다. "
+            "자료에서 근거를 하나 찾거나 이유를 1~3문장으로 설명할 수 있는 질문으로 만든다.",
+            3,
+        )
+    if level == "중":
+        return (
+            "중학생 수준. 단순 기억보다 원인·결과, 사실·해석, 출처와 근거를 연결하게 한다. "
+            "비교하거나 이유를 설명하는 질문을 포함하고 2~4문장 답변이 적절한 난이도로 만든다.",
+            3,
+        )
+    if level == "고":
+        return (
+            "고등학생 수준. 근거의 신뢰성, 주장과 전제, 대안적 해석, 상관과 인과 같은 판단 요소를 다룬다. "
+            "자료에 근거한 비판적 설명이나 반론 검토가 가능하도록 하고 3~6문장 답변이 적절한 난이도로 만든다.",
+            3,
+        )
+    return ("학생 수준에 맞는 쉬운 표현을 사용하고, 자료 근거를 바탕으로 생각하게 한다.", 3)
+
+
+def _make_adaptive_study_pack(case: dict, source: dict, user: dict | None, visual: dict | None) -> dict:
+    material_id = int(source.get("material_id") or 0)
+    level = str((user or {}).get("school_level") or case.get("education_target") or "")
+    grade = int((user or {}).get("grade") or 0)
+    cache_key = (material_id, level, grade)
+    if cache_key in _ADAPTIVE_PACK_CACHE:
+        return dict(_ADAPTIVE_PACK_CACHE[cache_key])
+
+    visual_available = visual is not None
+    visual_required = previous._visual_required(source)
+    fallback = previous._fallback_study(case, source, visual_available)
+    level_rules, question_count = _learning_level_rules(user)
+    profile = f"{level} {grade}학년" if grade else (level or "학생")
+    original_questions = "\n".join(f"- {q}" for q in source.get("prompts", [])) or "- 없음"
+    prompt = f"""다음 공식 디지털 리터러시 교육자료를 학생용 학습 카드로 재구성하라.
+
+학생: {profile}
+학년별 난이도 규칙: {level_rules}
+자료명: {case.get('title', '')}
+원문 파일: {source.get('source_name', '')}
+시각 자료가 화면에 함께 표시되는가: {'예' if visual_available else '아니오'}
+원래 활동이 시각 자료를 요구하는가: {'예' if visual_required else '아니오'}
+
+[원문]
+{source.get('context', '')[:8500]}
+
+[원문 질문/활동문]
+{original_questions}
+
+작성 규칙:
+1. 원문이 뒷받침하는 내용만 사용하고 사실·수치·사례를 새로 만들지 않는다.
+2. reading은 원문을 그대로 복사하지 말고 학생 수준에 맞게 2~4개 문단으로 재구성한다.
+3. 페이지·차시·파일명·목차·교사용 지시·성취기준 같은 편집 정보는 제외한다.
+4. questions는 정확히 {question_count}개를 만든다. 학생의 학교급과 학년에 맞춰 어휘, 추론 단계, 필요한 답변 길이를 조정한다.
+5. 질문은 한 번에 하나의 핵심 사고를 요구한다. 여러 요구사항을 한 문장에 몰아넣지 않는다.
+6. 종이에 선 긋기·표시하기·스티커 붙이기 같은 활동은 웹에서 글로 답할 수 있게 바꾼다.
+7. 화면에 없는 표·그림·사진을 전제로 질문하지 않는다. 시각 자료가 있으면 관찰 질문은 가능하다.
+8. reading에서 질문의 정답을 그대로 알려주지 않는다.
+9. 파일 종류가 아니라 실제 학습 주제를 activity_title로 쓴다.
+10. 'AI가 정리했다', '모델', 'RAG', '생성' 같은 표현은 학생 화면에 쓰지 않는다.
+
+JSON 스키마에 맞춰 반환하라."""
+    try:
+        draft, _ = base.core.generate_structured_with_fallback(
+            prompt,
+            previous.EducationStudyDraft,
+            max_output_tokens=950,
+        )
+        reading = [str(x).strip() for x in draft.reading if str(x).strip()][:4]
+        questions = [str(x).strip() for x in draft.questions if str(x).strip()][:question_count]
+        title = str(draft.activity_title or "").strip()
+        if not reading or len(questions) < min(2, question_count):
+            raise ValueError("adaptive_study_draft_incomplete")
+        pack = {
+            "activity_title": title or fallback["activity_title"],
+            "reading": reading,
+            "questions": questions,
+        }
+    except Exception as exc:
+        base.core.logger.warning("Adaptive education study generation failed: %s", type(exc).__name__)
+        pack = fallback
+
+    pack.update(
+        {
+            "visual_kind": (visual or {}).get("kind", ""),
+            "visual_available": visual_available,
+            "visual_required": visual_required,
+            "source_name": source.get("source_name", ""),
+            "page": (visual or {}).get("page") or source.get("page_start") or "",
+            "student_level": profile,
+        }
+    )
+    _ADAPTIVE_PACK_CACHE[cache_key] = dict(pack)
+    return pack
+
+
+base._remove_route("/api/education-learning/{case_id}", "GET")
+
+
+@app.get("/api/education-learning/{case_id}")
+def aioff_education_learning(case_id: str, request: Request):
+    case = previous.education_source._education_case(case_id)
+    source = previous._select_source(case)
+    visual = previous._build_visual(source)
+    user = auth.current_user(request.cookies.get(auth.COOKIE_NAME))
+    return {"ok": True, "pack": _make_adaptive_study_pack(case, source, user, visual)}
+
+
+# ---------------------------------------------------------------------------
+# Semantic tutor: understand intent first, then judge.
 # ---------------------------------------------------------------------------
 class AioffTutorChatRequest(BaseModel):
     session_id: str | None = None
@@ -231,8 +351,22 @@ class AioffTutorChatRequest(BaseModel):
 
 
 class TutorDecision(BaseModel):
-    verdict: Literal["pass", "retry"]
+    verdict: Literal["pass", "clarify", "retry"]
     response: str = Field(min_length=1, max_length=2200)
+
+
+def _tutor_level_rules(user: dict | None) -> str:
+    level = str((user or {}).get("school_level") or "")
+    grade = int((user or {}).get("grade") or 0)
+    if level == "초" and grade <= 3:
+        return "초등 1~3학년: 1~2개의 짧은 문장으로 말한다. 쉬운 일상어를 쓰고 한 번에 한 가지만 묻는다."
+    if level == "초":
+        return "초등 4~6학년: 쉬운 말로 2~3문장 피드백을 주고, 이유나 근거 하나를 자기 말로 설명하게 한다."
+    if level == "중":
+        return "중학생: 2~4문장으로 학생의 논리를 요약하고 사실·해석·원인·결과 중 필요한 한 요소를 점검한다."
+    if level == "고":
+        return "고등학생: 3~5문장으로 논리와 근거의 연결을 평가하고 전제·대안적 해석까지 필요할 때 점검한다."
+    return "학생 수준에 맞는 짧고 자연스러운 피드백을 준다."
 
 
 def _education_tutor_prompt(req: AioffTutorChatRequest, sid: str, case: dict, user: dict | None) -> str:
@@ -241,53 +375,65 @@ def _education_tutor_prompt(req: AioffTutorChatRequest, sid: str, case: dict, us
     question = str(req.current_question or case.get("opening_question") or "").strip()
     prior = base.core.messages(sid, 18)
     history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
-    profile = ""
-    if user:
-        level = str(user.get("school_level") or "")
-        grade = int(user.get("grade") or 0)
-        profile = f"{level} {grade}학년" if grade else level
+    level = str((user or {}).get("school_level") or "")
+    grade = int((user or {}).get("grade") or 0)
+    profile = f"{level} {grade}학년" if grade else (level or "학생")
+    level_rule = _tutor_level_rules(user)
 
-    hint_rule = (
-        "방향만 짚는 짧은 힌트 1개를 주고, 답을 다시 생각하게 하는 좁은 질문 1개를 한다."
+    process_hint = (
+        "오답이면 정답 내용을 말하지 말고, 학생이 질문에서 놓친 요구사항이 무엇인지 한 가지만 확인하게 한다."
         if req.question_attempt <= 1
-        else "원문에서 확인해야 할 핵심 표현이나 위치를 더 구체적으로 짚어 주되 정답 문장을 그대로 말하지 않는다."
-        if req.question_attempt == 2
-        else "선택지나 문장 틀처럼 거의 답을 구성할 수 있는 발판을 준다. 그래도 학생이 마지막 판단은 직접 하게 한다."
+        else "오답이 반복되면 정답 키워드 대신 '질문의 두 부분을 나눠 보기', '자료에서 근거 한 문장 찾기' 같은 사고 절차만 제안한다."
     )
 
-    return f'''너는 디지털 리터러시 수업에서 한 문항씩 지도하는 튜터다.
-학생 답변을 먼저 판정하고, 틀렸거나 핵심이 부족하면 같은 문항을 유지한 채 힌트를 단계적으로 제공한다.
+    return f'''너는 디지털 리터러시 수업의 대화형 튜터다. 가장 중요한 일은 정답 키워드를 맞히게 하는 것이 아니라 학생이 실제로 무슨 뜻으로 답했는지 이해하는 것이다.
 
-학생 수준: {profile or '학생'}
+학생 수준: {profile}
+수준별 피드백 규칙: {level_rule}
 자료명: {case.get('title') or '-'}
 현재 문항: {question or '(문항 정보 없음)'}
 이번 문항 시도 횟수: {req.question_attempt}
 학생의 이번 답변: {req.message}
 
-[화면에 사용된 공식 원문 근거]
+[공식 원문 근거]
 {evidence or '(원문 근거 없음)'}
 
 [이전 대화]
 {history or '(없음)'}
 
-판정 원칙:
-- verdict='pass': 현재 문항의 핵심에 직접 답했고 공식 원문과 모순되지 않으면 통과한다. 표현이 원문과 똑같을 필요는 없다.
-- 의견·해석형 문항은 하나의 정답 문구를 강요하지 않는다. 근거가 있고 질문에 맞으면 통과할 수 있다.
-- verdict='retry': 핵심을 빗나갔거나, 사실과 해석을 혼동했거나, 질문의 중요한 부분이 빠진 경우다.
-- 단순히 짧다는 이유만으로 retry 하지 않는다.
-- 원문에 없는 사실을 자료에 적혀 있다고 만들지 않는다.
+반드시 이 순서로 판단한다.
+1. 학생의 짧은 표현, 생략, 일상어를 문맥에 맞게 가장 합리적으로 해석한다.
+2. 학생이 사용한 단어가 원문 표현과 달라도 개념적으로 같은 뜻인지 본다. 키워드 일치 여부로 채점하지 않는다.
+3. 현재 문항이 실제로 요구하는 핵심 사고가 무엇인지 확인한 뒤, 학생 답이 그 사고에 닿아 있는지 본다.
+4. 의견·해석형 문항에는 하나의 정답 문구를 강요하지 않는다. 근거가 있고 질문에 맞는 다른 해석도 인정한다.
+
+verdict 기준:
+- pass: 학생의 의도가 질문 핵심에 개념적으로 맞고 원문과 모순되지 않는다. 짧거나 표현이 거칠어도 의미가 충분히 전달되면 통과한다.
+- clarify: 학생 답이 맞는 방향으로 해석될 가능성이 높지만 너무 짧거나 모호해서 뜻을 확정하기 어렵다. 이때는 오답 처리하지 않는다.
+- retry: 학생의 뜻을 최대한 호의적으로 해석해도 질문과 무관하거나 원문과 명확히 모순되거나 핵심 요구를 잘못 이해했다.
+
+clarify일 때:
+- 학생이 이미 쓴 표현을 그대로 받아서 그 말의 뜻을 자기 말로 조금만 풀어 달라고 묻는다.
+- 정답에 필요한 새 키워드, 예시, 원인, 피해 유형을 먼저 알려주지 않는다.
+- 예: '네가 말한 A가 여기서는 어떤 뜻인지 한 문장만 더 설명해줄래?'처럼 묻는다.
 
 retry일 때:
-- 학생이 방금 한 말을 길게 되풀이하지 않는다.
-- 무엇이 부족한지 한 가지만 짚는다.
-- {hint_rule}
-- 매번 같은 문장이나 같은 질문을 반복하지 않는다.
+- 정답 방향을 내용으로 떠먹이지 않는다.
+- {process_hint}
+- 학생이 쓰지 않은 정답 후보나 예시를 먼저 나열하지 않는다.
 
 pass일 때:
-- 왜 통과인지 핵심 근거를 2~4문장으로 짧게 설명한다.
-- 다음 문항을 새로 만들어 묻지 않는다. 화면이 다음 문항으로 넘어간다.
+- 먼저 '네 답을 이런 뜻으로 이해했다'고 학생 의도를 짧게 바꿔 말한다.
+- 왜 질문에 맞는 판단인지 근거를 짧게 설명한다.
+- 다음 문항을 새로 만들지 않는다. 화면에서 다음 문항으로 넘어간다.
 
-response에는 학생에게 보여줄 말만 작성하고 'pass', 'retry', 판정 코드, 모델명은 쓰지 않는다.'''
+금지:
+- 정답 문구를 유도하기 위해 같은 질문을 표현만 바꿔 반복하기
+- 학생이 말하지 않은 정답 키워드를 힌트라는 이름으로 먼저 제시하기
+- 원문 문장과 단어가 다르다는 이유만으로 retry 하기
+- 학생 답의 의미를 해석하지 않고 누락 키워드만 검사하기
+
+response에는 학생에게 보여줄 자연스러운 말만 작성하고 verdict 이름이나 모델명은 쓰지 않는다.'''
 
 
 base._remove_route("/api/chat-stream", "POST")
@@ -311,21 +457,30 @@ def aioff_chat_stream(req: AioffTutorChatRequest, request: Request):
     user = auth.current_user(request.cookies.get(auth.COOKIE_NAME))
     prompt = _education_tutor_prompt(req, sid, found[1], user)
     try:
-        decision, provider = base.core.generate_structured_with_fallback(prompt, TutorDecision, max_output_tokens=700)
+        decision, provider = base.core.generate_structured_with_fallback(
+            prompt,
+            TutorDecision,
+            max_output_tokens=700,
+        )
     except Exception as exc:
         base.core.logger.warning("Education tutor evaluation failed: %s", type(exc).__name__)
         raise HTTPException(502, "학습 답변 평가에 실패했습니다. 잠시 후 다시 시도해 주세요.")
 
     text = str(decision.response or "").strip()
     base.core.save_chat_exchange(sid, req.message, text)
-    marker = "[[AIOFF_PASS]]" if decision.verdict == "pass" else "[[AIOFF_RETRY]]"
-    base.core.logger.info("Education tutor provider=%s verdict=%s case=%s", provider, decision.verdict, case_id)
+    base.core.logger.info(
+        "Education tutor provider=%s verdict=%s case=%s",
+        provider,
+        decision.verdict,
+        case_id,
+    )
     return Response(
-        text + marker,
+        text,
         media_type="text/plain; charset=utf-8",
         headers={
             "X-Session-Id": sid,
             "X-AIOFF-Provider": provider,
+            "X-AIOFF-Verdict": decision.verdict,
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",
         },
@@ -371,6 +526,9 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .aioff-composer-side .chat-status{margin-top:8px!important}
 
 .education-study-v21{max-width:none!important;width:100%!important}
+.aioff-learning-cover{margin:0 0 14px;border-bottom:1px solid #e7dfd5;background:#f5f1eb;padding:12px}
+.aioff-learning-cover small{display:block;margin:0 0 7px;font-size:9px;font-weight:850;color:#756b62}
+.aioff-learning-cover img{display:block;width:100%;height:240px;object-fit:contain;background:#ebe7e0;border:1px solid #ddd5cb;border-radius:8px}
 .education-study-v21-visual iframe{height:clamp(620px,72vh,920px)!important}
 .education-study-v21-visual img{width:100%!important;max-height:900px!important;object-fit:contain!important}
 .education-study-v21-questions ol{padding-left:0!important;list-style:none!important}
@@ -380,7 +538,7 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
 .aioff-question-progress{font-size:10px;font-weight:800;color:#9b6d4d}
 
 @media(max-width:1180px){main{width:calc(100% - 20px)!important}.aioff-learning-columns{grid-template-columns:minmax(0,1fr) 320px}.aioff-composer-side .composer textarea{min-height:500px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:205px!important;min-height:205px!important}}
-@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}}
+@media(max-width:900px){main{width:100%!important;padding-left:12px!important;padding-right:12px!important}.aioff-learning-columns{display:block;min-height:0}.aioff-learning-columns>.chat-area{border-right:0;padding:16px!important}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side{border-top:1px solid var(--line)}.aioff-composer-side .composer textarea{min-height:220px!important}.education-study-v21-visual iframe{height:520px!important}.aioff-learning-cover img{height:190px}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview{height:170px!important;min-height:170px!important}}
 </style>
 <script>
 (() => {
@@ -388,7 +546,6 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
   let activeQuestions=[];
   let activeQuestionIndex=0;
   let questionAttempts=[];
-
   const nativeFetch=window.fetch.bind(window);
 
   function installWideLearningLayout(){
@@ -443,7 +600,21 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     };
   }
 
-  function updateQuestionUI(retry=false){
+  function installEducationCovers(){
+    document.querySelectorAll('.education-study-v21').forEach(card=>{
+      if(card.querySelector('.aioff-learning-cover')) return;
+      const id=String(card.dataset.eduV21||'');
+      const body=card.querySelector('.education-study-v21-body');
+      if(!id || !body) return;
+      const cover=document.createElement('div');
+      cover.className='aioff-learning-cover';
+      cover.innerHTML=`<small>자료 표지</small><img src="/api/education-thumb/${encodeURIComponent(id)}" alt="교육자료 썸네일" loading="lazy">`;
+      const visual=body.querySelector('.education-study-v21-visual');
+      body.insertBefore(cover,visual||body.firstChild);
+    });
+  }
+
+  function updateQuestionUI(state=''){
     if(!activeEducationCard || !activeQuestions.length) return;
     const items=[...activeEducationCard.querySelectorAll('.education-study-v21-questions li')];
     items.forEach((li,i)=>li.classList.toggle('aioff-current-question',i===activeQuestionIndex));
@@ -451,12 +622,18 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     if(heading){
       let progress=heading.querySelector('.aioff-question-progress');
       if(!progress){progress=document.createElement('span');progress.className='aioff-question-progress';heading.appendChild(progress)}
-      progress.textContent=`${activeQuestionIndex+1} / ${activeQuestions.length}${retry?' · 다시 생각해보기':''}`;
+      const tail=state==='clarify'?' · 뜻을 조금 더 설명해보기':state==='retry'?' · 다시 검토해보기':'';
+      progress.textContent=`${activeQuestionIndex+1} / ${activeQuestions.length}${tail}`;
     }
     const side=document.querySelector('[data-aioff-side-question]');
     const sideProgress=document.querySelector('[data-aioff-side-progress]');
     const sideText=document.querySelector('[data-aioff-side-text]');
-    if(side&&sideProgress&&sideText){side.style.display='block';sideProgress.textContent=`질문 ${activeQuestionIndex+1} / ${activeQuestions.length}${retry?' · 힌트를 보고 다시 답해보세요':''}`;sideText.textContent=activeQuestions[activeQuestionIndex]||''}
+    if(side&&sideProgress&&sideText){
+      side.style.display='block';
+      const tail=state==='clarify'?' · 네가 쓴 말의 뜻을 조금 더 설명해보세요':state==='retry'?' · 답을 다시 검토해보세요':'';
+      sideProgress.textContent=`질문 ${activeQuestionIndex+1} / ${activeQuestions.length}${tail}`;
+      sideText.textContent=activeQuestions[activeQuestionIndex]||'';
+    }
     const textarea=document.getElementById('input');
     if(textarea) textarea.placeholder=`질문 ${activeQuestionIndex+1}에 대한 생각을 적어보세요.`;
   }
@@ -468,11 +645,24 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
     if(card===activeEducationCard && card.dataset.aioffSeq==='1') return;
     const questions=[...card.querySelectorAll('.education-study-v21-questions li')].map(li=>(li.textContent||'').trim()).filter(Boolean);
     if(!questions.length) return;
-    activeEducationCard=card;activeQuestions=questions;activeQuestionIndex=0;questionAttempts=new Array(questions.length).fill(0);card.dataset.aioffSeq='1';updateQuestionUI(false);
+    activeEducationCard=card;activeQuestions=questions;activeQuestionIndex=0;questionAttempts=new Array(questions.length).fill(0);card.dataset.aioffSeq='1';updateQuestionUI('');
+  }
+
+  function applyTutorVerdict(verdict){
+    if(!activeEducationCard || !activeQuestions.length) return;
+    if(verdict==='pass'){
+      if(activeQuestionIndex<activeQuestions.length-1){activeQuestionIndex+=1;updateQuestionUI('')}
+      else{
+        const p=document.querySelector('[data-aioff-side-progress]');if(p)p.textContent=`질문 ${activeQuestions.length} / ${activeQuestions.length} · 답변 완료`;
+        const t=document.querySelector('[data-aioff-side-text]');if(t)t.textContent='모든 문항을 마쳤습니다.';
+      }
+    }else if(verdict==='clarify') updateQuestionUI('clarify');
+    else if(verdict==='retry') updateQuestionUI('retry');
   }
 
   window.fetch=async function(resource,init){
     const url=typeof resource==='string'?resource:String(resource?.url||'');
+    let educationChat=false;
     if(url.includes('/api/chat-stream') && activeEducationCard && activeQuestions.length && init && typeof init.body==='string'){
       try{
         const body=JSON.parse(init.body);
@@ -480,41 +670,20 @@ main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!
         body.current_question=activeQuestions[activeQuestionIndex]||'';
         body.question_attempt=questionAttempts[activeQuestionIndex];
         init={...init,body:JSON.stringify(body)};
+        educationChat=true;
       }catch(e){}
     }
-    return nativeFetch(resource,init);
+    const response=await nativeFetch(resource,init);
+    if(educationChat){
+      const verdict=(response.headers.get('X-AIOFF-Verdict')||'').toLowerCase();
+      if(verdict) setTimeout(()=>applyTutorVerdict(verdict),120);
+    }
+    return response;
   };
 
-  function stripVerdict(el){
-    const walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);const nodes=[];let n;
-    while((n=walker.nextNode())) nodes.push(n);
-    nodes.forEach(node=>{node.nodeValue=(node.nodeValue||'').replaceAll('[[AIOFF_PASS]]','').replaceAll('[[AIOFF_RETRY]]','')});
-  }
-
-  function consumeTutorVerdict(){
-    if(!activeEducationCard || !activeQuestions.length) return;
-    const messages=[...document.querySelectorAll('#chat .msg.assistant')];
-    for(const msg of messages){
-      if(msg.dataset.aioffVerdict==='1') continue;
-      const text=msg.textContent||'';
-      let verdict='';
-      if(text.includes('[[AIOFF_PASS]]')) verdict='pass';
-      else if(text.includes('[[AIOFF_RETRY]]')) verdict='retry';
-      if(!verdict) continue;
-      msg.dataset.aioffVerdict='1';stripVerdict(msg);
-      if(verdict==='pass'){
-        if(activeQuestionIndex<activeQuestions.length-1){activeQuestionIndex+=1;updateQuestionUI(false)}
-        else{
-          const p=document.querySelector('[data-aioff-side-progress]');if(p)p.textContent=`질문 ${activeQuestions.length} / ${activeQuestions.length} · 답변 완료`;
-          const t=document.querySelector('[data-aioff-side-text]');if(t)t.textContent='세 문항을 모두 마쳤습니다.';
-        }
-      }else updateQuestionUI(true);
-    }
-  }
-
-  function scan(){installWideLearningLayout();installSequentialQuestions();consumeTutorVerdict()}
+  function scan(){installWideLearningLayout();installEducationCovers();installSequentialQuestions()}
   installWideLearningLayout();scan();
-  new MutationObserver(scan).observe(document.body,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['data-loaded']});
+  new MutationObserver(scan).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-loaded']});
 })();
 </script>
 '''
