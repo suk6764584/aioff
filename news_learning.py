@@ -368,3 +368,164 @@ def _render_news_layout() -> str:
 
 
 runtime._render_runtime_index = _render_news_layout
+
+
+# ---------------------------------------------------------------------------
+# 뉴스 튜터 설명 강화: 답을 다시 묻기 전에 왜 맞거나 부족한지 자료에 근거해 설명한다.
+# ---------------------------------------------------------------------------
+from fastapi import HTTPException as _HTTPException, Request as _Request
+from fastapi.responses import Response as _Response
+
+_PREVIOUS_NEWS_CHAT_STREAM = runtime.runtime_chat_stream
+base._remove_route("/api/chat-stream", "POST")
+
+
+def _feedback_length_rule(user: dict | None) -> str:
+    level = str((user or {}).get("school_level") or "")
+    grade = int((user or {}).get("grade") or 0)
+    if level == "초" and grade <= 3:
+        return "3~4문장. 쉬운 말로 판단 이유를 한 가지씩 설명한다."
+    if level == "초":
+        return "4~5문장. 학생 답을 해석하고 기사 근거와 연결해 설명한다."
+    if level == "중":
+        return "5~7문장. 학생 답의 의미, 기사 근거, 사실과 해석의 차이를 충분히 설명한다."
+    if level == "고":
+        return "6~8문장. 근거의 범위, 불확실성, 다른 해석 가능성까지 필요하면 설명한다."
+    return "4~6문장. 판단 근거와 미디어 리터러시 포인트를 충분히 설명한다."
+
+
+@app.post("/api/chat-stream")
+def detailed_news_chat_stream(req: current.AioffTutorChatRequest, request: _Request):
+    sid = req.session_id or str(base.core.uuid.uuid4())
+    lesson_id = req.lesson_id if req.lesson_id in base.LESSONS else base._get_lesson_id(sid)
+    case_id = runtime.flow._get_case_id(sid) if sid else None
+    found = runtime.flow.CASE_BY_ID.get(case_id) if case_id else None
+    if not found or not str(case_id).startswith("news_"):
+        return _PREVIOUS_NEWS_CHAT_STREAM(req, request)
+
+    case = found[1]
+    user = runtime.auth.current_user(request.cookies.get(runtime.auth.COOKIE_NAME))
+    pack = runtime._news_study_pack(case, user)
+    profile, _, _ = runtime._news_profile(user)
+    reading_items = [str(x).strip() for x in pack.get("reading", []) if str(x).strip()]
+    questions = [str(x).strip() for x in pack.get("questions", []) if str(x).strip()]
+    reading = "\n".join(f"- {x}" for x in reading_items)
+    prior = base.core.messages(sid, 24)
+    history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
+    current_question = str(req.current_question or "").strip()
+    if not current_question:
+        for message in reversed(prior):
+            if message.get("role") == "assistant" and str(message.get("content") or "").strip():
+                current_question = str(message.get("content") or "").strip()
+                break
+    if not current_question and questions:
+        current_question = questions[0]
+
+    length_rule = _feedback_length_rule(user)
+    prompt = f'''너는 실제 뉴스를 이용한 디지털 리터러시 튜터다.
+학생 수준: {profile}
+설명 분량: {length_rule}
+
+[기사]
+제목: {case.get('title','')}
+언론사: {case.get('source_name','')}
+게시일: {str(case.get('news_published_at') or '')[:10]}
+
+[학생 화면에 실제 표시된 읽어보기]
+{reading or '(읽어보기 없음)'}
+
+[현재 질문]
+{current_question or '(질문 정보 없음)'}
+
+[준비된 후속 질문]
+{chr(10).join(f'- {x}' for x in questions) or '- 없음'}
+
+[이전 대화]
+{history or '(없음)'}
+
+[학생의 새 답변]
+{req.message}
+
+반드시 학생 답을 먼저 '설명'한 뒤 다음 질문을 한다.
+1. 학생이 쓴 말의 의도와 의미를 문맥에서 먼저 해석한다. 키워드가 빠졌다는 이유로 오답 처리하지 않는다.
+2. 첫 문장에서는 학생의 답이 어떤 점에서 맞는지, 부족한지, 또는 애매한지를 분명히 말한다.
+3. 그 다음 2~5문장에서는 반드시 읽어보기에 실제로 나온 구체적 사실과 연결해 왜 그런 판단인지 설명한다. 학생이 방금 말한 내용과 기사 사실 사이의 관계를 풀어준다.
+4. 특히 '확인하지 못했다', '검토 중이다', '정황이 있다', '가능성이 있다', '주장했다' 같은 표현은 '확정됐다'와 무엇이 다른지 설명한다.
+5. 사실, 해석, 추정, 추가 확인이 필요한 부분을 구분해야 하는 이유도 현재 사례와 연결해서 알려준다. 일반적인 훈계 문장만 쓰지 않는다.
+6. 학생 답이 충분하면 같은 내용을 다시 말하게 하지 않는다. 이해한 부분을 인정하고 준비된 다음 질문 중 아직 다루지 않은 하나로 넘어간다.
+7. 학생 답이 부분적으로 맞으면, 맞는 부분을 먼저 설명한 뒤 부족한 한 부분만 짚는다. '좀 더 명확히 말해볼래?'만 단독으로 쓰지 않는다.
+8. 학생 답이 틀렸어도 정답을 한 단어씩 유도하는 도돌이표를 만들지 않는다. 읽어보기의 어느 사실 때문에 판단이 달라지는지 설명한 뒤 한 번만 다시 생각하게 한다.
+9. 화면에 표시되지 않은 기사 원문 내용이나 모델의 배경지식을 근거로 채점하지 않는다.
+10. 기사에 없는 사실을 새로 만들지 않는다.
+11. response는 설명이 중심이고 마지막에만 질문 하나를 둔다. 질문만 던지는 답변은 금지한다.
+
+예시 형식(문구를 그대로 복사하지 말 것):
+'맞아. 이 기사에서는 회사가 피해 대상을 특정했다고 하지 않고, 거래내역을 갖고 있지 않아 구체적인 피해 대상을 특정하지 못했다고 설명해. 그래서 "피해가 없다"와 "피해 규모를 아직 정확히 모른다"는 서로 다른 뜻이야. 기사에서 확인 가능한 사실은 후자이고, 전자는 근거가 더 필요해. 이런 차이를 구분하는 게 뉴스에서 사실과 추정을 나누는 핵심이야. 다음으로 ...은 어떻게 봐야 할까?'
+
+verdict는 pass, clarify, retry 중 하나로 판단한다.
+- pass: 학생 답의 의미가 현재 질문의 핵심을 충족한다.
+- clarify: 방향은 맞지만 학생 표현의 뜻이 실제로 두 가지 이상으로 해석될 수 있다.
+- retry: 읽어보기와 명확히 모순되거나 질문을 잘못 이해했다.
+response에는 학생에게 보여줄 자연스러운 설명만 작성하고 verdict나 모델명은 쓰지 않는다.'''
+
+    try:
+        decision, provider = base.core.generate_structured_with_fallback(
+            prompt,
+            current.TutorDecision,
+            max_output_tokens=1200,
+        )
+    except Exception as exc:
+        base.core.logger.warning("Detailed news tutor failed: %s", type(exc).__name__)
+        raise _HTTPException(502, "뉴스 학습 답변 평가에 실패했습니다. 잠시 후 다시 시도해 주세요.")
+
+    text = str(decision.response or "").strip()
+    base.core.save_chat_exchange(sid, req.message, text)
+    base.core.logger.info(
+        "Detailed news tutor provider=%s verdict=%s case=%s",
+        provider,
+        decision.verdict,
+        case_id,
+    )
+    return _Response(
+        text,
+        media_type="text/plain; charset=utf-8",
+        headers={
+            "X-Session-Id": sid,
+            "X-AIOFF-Provider": provider,
+            "X-AIOFF-Verdict": decision.verdict,
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# 로그인 영역 아래에 남던 구형 'ON' 라벨 제거.
+# ---------------------------------------------------------------------------
+_RENDER_BEFORE_FINAL_FIX = runtime._render_runtime_index
+
+
+def _render_final_fix() -> str:
+    page = _RENDER_BEFORE_FINAL_FIX()
+    patch = r'''
+<style>
+.aioff-auth-dock .mode-label{display:none!important}
+</style>
+<script>
+(() => {
+  function removeStandaloneOn(){
+    document.querySelectorAll('body *').forEach(el=>{
+      if(el.children.length===0 && (el.textContent||'').trim()==='ON' && !el.classList.contains('aioff-auth-state')){
+        el.remove();
+      }
+    });
+  }
+  removeStandaloneOn();
+  new MutationObserver(removeStandaloneOn).observe(document.body,{childList:true,subtree:true,characterData:true});
+})();
+</script>
+'''
+    return page.replace("</body>", patch + "\n</body>")
+
+
+runtime._render_runtime_index = _render_final_fix
