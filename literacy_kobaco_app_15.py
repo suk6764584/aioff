@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from pathlib import Path
 
+import requests
+from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
 
 import literacy_kobaco_app_14 as previous
@@ -134,7 +137,6 @@ def _education_cases() -> list[dict]:
 
 
 def _education_fts_context(case: dict, user_message: str, limit: int = 4) -> list[str]:
-    # Retrieve grounded chunks from the selected official material without any API call.
     material_id = int(case.get("education_material_id") or 0)
     if not material_id or not EDU_DB.exists():
         return [str(x) for x in (case.get("clues") or []) if str(x).strip()][:limit]
@@ -256,6 +258,78 @@ except Exception:
     pass
 
 
+# NEIS 인증키가 있으면 정식 검색, 없으면 공식 sample mode(최대 5건)로 검색합니다.
+# 학교 검색을 막지 않고, 정식 키가 추가되면 자동으로 20건 검색으로 전환합니다.
+base._remove_route("/api/auth/schools", "GET")
+
+
+@app.get("/api/auth/schools")
+def auth_school_search_v15(region: str, school_level: str, q: str):
+    region = (region or "").strip()
+    school_level = (school_level or "").strip()
+    query = (q or "").strip()
+    auth = previous.auth
+
+    if region not in auth.REGION_CODES:
+        raise HTTPException(400, "지역을 선택해 주세요.")
+    if school_level not in auth.SCHOOL_LEVEL_NAMES:
+        raise HTTPException(400, "학교급을 선택해 주세요.")
+    if len(query) < 2:
+        raise HTTPException(400, "학교명은 2글자 이상 입력해 주세요.")
+
+    key = os.getenv("NEIS_API_KEY", "").strip()
+    sample_mode = not bool(key)
+    params = {
+        "Type": "json",
+        "pIndex": 1,
+        "pSize": 5 if sample_mode else 30,
+        "ATPT_OFCDC_SC_CODE": auth.REGION_CODES[region],
+        "SCHUL_KND_SC_NM": auth.SCHOOL_LEVEL_NAMES[school_level],
+        "SCHUL_NM": query,
+    }
+    if key:
+        params["KEY"] = key
+
+    try:
+        response = requests.get("https://open.neis.go.kr/hub/schoolInfo", params=params, timeout=10)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        base.core.logger.warning("NEIS school search failed: %s", type(exc).__name__)
+        raise HTTPException(502, "학교 검색 서버 연결에 실패했습니다. 학교명을 직접 입력해도 됩니다.")
+
+    blocks = payload.get("schoolInfo") or []
+    rows = []
+    for block in blocks:
+        if isinstance(block, dict) and isinstance(block.get("row"), list):
+            rows.extend(block["row"])
+
+    items = []
+    seen = set()
+    for row in rows:
+        code = str(row.get("SD_SCHUL_CODE") or "").strip()
+        name = str(row.get("SCHUL_NM") or "").strip()
+        address = str(row.get("ORG_RDNMA") or row.get("ORG_RDNDA") or "").strip()
+        if not name:
+            continue
+        marker = code or f"{name}|{address}"
+        if marker in seen:
+            continue
+        seen.add(marker)
+        items.append({"code": code, "name": name, "address": address})
+
+    limit = 5 if sample_mode else 20
+    return {
+        "configured": True,
+        "sample_mode": sample_mode,
+        "items": items[:limit],
+        "message": (
+            "공식 NEIS 샘플 검색 결과입니다. 인증키 연결 전에는 최대 5건까지 표시됩니다."
+            if sample_mode else ""
+        ),
+    }
+
+
 def _render_index_kobaco_v15():
     page = previous._render_index_kobaco_v14()
     page = page.replace("공익광고 효과 수치 제대로 읽기", "리터러시 교육 안내서")
@@ -267,10 +341,46 @@ def _render_index_kobaco_v15():
 
     patch = r'''
 <style>
+/* v15: 로그인 상태/로그인 요구 UI 가독성 확대 */
+.aioff-auth-dock{
+  position:absolute!important;top:70px!important;right:24px!important;
+  width:286px!important;box-sizing:border-box!important;padding:14px 16px!important;
+  display:grid!important;grid-template-columns:1fr!important;align-items:stretch!important;gap:10px!important;
+  background:#fffdf9!important;border:1px solid #d8d0c5!important;border-radius:12px!important;
+  box-shadow:0 8px 24px rgba(35,29,23,.10)!important;color:#3f3a35!important;
+  white-space:normal!important;z-index:60!important;
+}
+.aioff-auth-state{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:8px!important;width:100%!important;font-size:17px!important;line-height:1.25!important;font-weight:900!important;text-align:left!important;color:#3a3530!important}
+.aioff-auth-state:before{width:11px!important;height:11px!important;margin-right:0!important;flex:0 0 auto!important}
+.aioff-auth-dock.is-on .aioff-auth-state{color:#1b61c8!important}
+.aioff-auth-links{display:flex!important;align-items:center!important;gap:8px!important;font-size:12px!important;line-height:1.35!important;flex-wrap:wrap!important}
+.aioff-auth-links button{min-height:34px!important;padding:7px 12px!important;border:1px solid #d2cbc2!important;border-radius:8px!important;background:#f4efe8!important;color:#3e3934!important;font-size:12px!important;font-weight:800!important;text-decoration:none!important}
+.aioff-auth-links button:first-of-type{background:#22201d!important;border-color:#22201d!important;color:#fff!important}
+.aioff-auth-links span{font-size:12px!important;font-weight:750!important;color:#57514b!important;margin-right:auto!important}
+
+#aioff-login-required{top:86px!important;min-width:500px!important;max-width:min(560px,calc(100vw - 32px))!important;min-height:82px!important;box-sizing:border-box!important;padding:17px 19px!important;gap:20px!important;border-radius:12px!important;font-size:13px!important;line-height:1.5!important;box-shadow:0 12px 34px rgba(35,29,23,.17)!important}
+#aioff-login-required b{display:inline-block!important;font-size:16px!important;line-height:1.35!important;margin-bottom:3px!important}
+#aioff-login-required button{min-width:92px!important;min-height:42px!important;padding:9px 15px!important;border-radius:8px!important;font-size:13px!important;font-weight:900!important}
+
+/* 회원가입/로그인 모달 자체도 한 단계 키움 */
+.aioff-auth-modal{width:min(540px,calc(100vw - 30px))!important;border-radius:12px!important}
+.aioff-auth-head{padding:21px 23px 16px!important}.aioff-auth-head h3{font-size:20px!important}.aioff-auth-head p{font-size:12px!important}
+.aioff-auth-tab{padding:13px!important;font-size:13px!important}.aioff-auth-pane{padding:21px 23px 24px!important}
+.aioff-auth-form{gap:13px!important}.aioff-auth-field{gap:6px!important}.aioff-auth-field label{font-size:11px!important}
+.aioff-auth-field input,.aioff-auth-field select{padding:11px 12px!important;font-size:13px!important;border-radius:8px!important}
+.aioff-auth-submit{padding:12px 14px!important;font-size:13px!important;border-radius:8px!important}
+.aioff-auth-note,.aioff-auth-message{font-size:11px!important}.aioff-school-search{gap:8px!important}.aioff-school-search button{padding:0 14px!important;font-size:11px!important;border-radius:8px!important}
+.aioff-school-results{max-height:190px!important;border-radius:8px!important}.aioff-school-result{padding:10px 11px!important}.aioff-school-result b{font-size:12px!important}.aioff-school-result small{font-size:10px!important}
+
 .education-guide-preview{height:82px;margin:-10px -10px 9px;border-radius:7px;background:#eef3fb;border:1px solid #d6dfef;padding:10px;box-sizing:border-box;display:flex;flex-direction:column;justify-content:flex-end;gap:3px}
 .education-guide-preview b{font-size:10px;color:#234b88}.education-guide-preview span{font-size:8px;color:#66758a}
 .education-guide-card{border:1px solid #ddd5ca;border-radius:8px;background:#fff;overflow:hidden}.education-guide-head{padding:15px 16px;background:#f6f8fc;border-bottom:1px solid #e2e6ee}.education-guide-head small{display:block;font-size:8px;color:#6b778a;margin-bottom:4px}.education-guide-head b{font-size:14px}.education-guide-meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;padding:12px 14px}.education-guide-meta div{padding:9px;border:1px solid #ebe6df;border-radius:6px}.education-guide-meta small{display:block;font-size:8px;color:#847b72}.education-guide-meta b{display:block;margin-top:3px;font-size:10px}.education-guide-source{padding:0 14px 13px}.education-guide-source a{font-size:9px;color:#2d66ba;text-decoration:none}.education-guide-source a:hover{text-decoration:underline}
-@media(max-width:700px){.education-guide-meta{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){
+  .education-guide-meta{grid-template-columns:1fr 1fr}
+  .aioff-auth-dock{position:static!important;width:auto!important;margin:10px 14px!important}
+  #aioff-login-required{min-width:0!important;width:calc(100vw - 24px)!important;top:72px!important}
+  .aioff-auth-modal{width:min(500px,calc(100vw - 20px))!important}
+}
 </style>
 <script>
 (() => {
@@ -340,6 +450,25 @@ def _render_index_kobaco_v15():
     return 1;
   }
 
+  // 학교 검색 결과가 sample mode이면 사용자에게 정확히 표시합니다.
+  const schoolButton=document.getElementById('aioff-school-search-btn');
+  if(schoolButton){
+    schoolButton.addEventListener('click',()=>{
+      setTimeout(async()=>{
+        const note=document.getElementById('aioff-school-message');
+        const region=document.getElementById('aioff-school-region')?.value||'';
+        const level=document.getElementById('aioff-school-level')?.value||'';
+        const q=document.getElementById('aioff-school-name')?.value?.trim()||'';
+        if(!note||!region||!level||q.length<2) return;
+        try{
+          const r=await fetch(`/api/auth/schools?region=${encodeURIComponent(region)}&school_level=${encodeURIComponent(level)}&q=${encodeURIComponent(q)}`,{credentials:'same-origin'});
+          const d=await r.json();
+          if(r.ok && d.sample_mode && d.items?.length) note.textContent=`${d.items.length}개 학교를 찾았습니다. · NEIS 샘플 검색(최대 5건)`;
+        }catch(e){}
+      },250);
+    });
+  }
+
   document.addEventListener('click',async e=>{
     const card=e.target.closest?.('.lesson-card');
     if(!card) return;
@@ -347,7 +476,7 @@ def _render_index_kobaco_v15():
     const user=await currentAuth();
     if(!user){
       const box=document.getElementById('aioff-login-required');
-      if(box){box.classList.add('show');clearTimeout(box._t);box._t=setTimeout(()=>box.classList.remove('show'),3500);}
+      if(box){box.classList.add('show');clearTimeout(box._t);box._t=setTimeout(()=>box.classList.remove('show'),4500);}
       return;
     }
     const lesson=card.dataset.lesson;
