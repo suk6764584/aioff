@@ -1,63 +1,47 @@
 # AI OFF
 
-AI와 학습한 뒤, 학생이 AI에 맡긴 사고와 정보 판단을 다시 직접 수행해보는 디지털 리터러시 학습 서비스입니다.
+AI와 학습한 뒤 학생이 AI에 맡긴 사고와 정보 판단을 다시 직접 수행하는 디지털 리터러시 학습 서비스입니다.
 
-## 현재 구현
-- Gemini 실제 학습 채팅
-- 학습 대화 기반 사고 기능 위임 분석
-- 출처 신뢰도·사실/의견·근거 충분성·교차검증·불확실성 확인 분석
-- 대화 맥락에 맞는 AI OFF 문제 3개 생성
-- 이해·사고 수행 문제와 디지털 리터러시 판단 문제를 혼합 생성
-- 학생 답변 평가 및 AI 위임/직접 확인 결과 비교
-- 답변 수정 및 같은 문항 평가기준으로 재채점
-- SQLite 세션·대화·평가 기록 저장
-- FastAPI 백엔드 + 단일 HTML 프론트엔드
-- systemd 자동 시작 서비스 파일 포함
+## 현재 서비스
 
-## 현재 분석 항목
-### 사고 위임
-- 자료 탐색
-- 개념 설명
-- 비교·분석
-- 주장 구성
-- 근거 판단
+현재 배포 엔트리포인트는 `literacy_kobaco_app_20:app`입니다.
 
-### 정보 판단·검증
-- 출처 신뢰도 판단
-- 사실·의견 구분
-- 근거 충분성 판단
-- 교차검증
-- 불확실성 확인
-
-분석 결과는 이번 학습 대화에서 확인된 범위만 보여주며 학생의 장기적인 능력이나 성향을 단정하지 않습니다.
+주요 기능:
+- KOBACO AiSAC 실제 광고 데이터 기반 미디어 리터러시 학습
+- 공식 리터러시 교육 안내서 기반 학교급·학년 맞춤 학습
+- KOBACO 청소년·OTT 통계 기반 사실/해석 구분 학습
+- 로그인/회원가입 및 학교·학년 프로필
+- Gemini 학습 채팅 + Groq fallback
+- AI OFF 대화 분석, 문제 생성, 답변 평가·재도전
+- SQLite 세션·회원·교육자료 데이터
 
 ## 서버 환경
+
 - Python 3.11
-- FastAPI
-- Uvicorn
-- google-genai
-- SQLite
+- FastAPI / Uvicorn
+- google-genai / Groq
+- SQLite / DuckDB
 
-## 환경변수
-`.env.example`을 참고해 서버의 `/opt/aioff/.env`에만 실제 값을 저장합니다.
+실제 `.env`, DB, 다운로드 교육자료, 가상환경은 Git에 올리지 않습니다.
 
-```env
-GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-3.5-flash-lite
-GROQ_API_KEY=...
-GROQ_MODEL=openai/gpt-oss-20b
-```
+## 로컬 실행
 
-실제 `.env`, `aioff.db`, 가상환경 파일은 저장소에 커밋하지 않습니다.
-
-## 실행
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn literacy_app:app --host 0.0.0.0 --port 3000
+.venv/bin/uvicorn literacy_kobaco_app_20:app --host 0.0.0.0 --port 3000
 ```
 
-`literacy_app.py`는 기존 `app.py`의 채팅·평가·DB 구조를 그대로 사용하면서, 화면 문구와 대화 분석/AI OFF 문제 생성 부분을 디지털 리터러시 방향으로 확장합니다.
+## 서버 배포
 
-## 배포 원칙
-코드는 이 저장소를 기준으로 관리하고, NAVER VM에서는 `git pull` 후 `bash deploy.sh`로 서비스 파일 반영·재시작·헬스체크까지 수행합니다.
+NAVER VM의 `/opt/aioff`에서:
+
+```bash
+bash deploy.sh
+```
+
+`deploy.sh`가 최신 코드 pull, 의존성 확인, 현재 v20 통합검증, DB migration, systemd 재시작, health check까지 수행합니다.
+
+## 교육자료 데이터
+
+교육자료 원본 재구축은 일반 배포와 분리합니다. 자세한 순서는 `RAG_DATA_PIPELINE.md`를 따릅니다.
