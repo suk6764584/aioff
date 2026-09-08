@@ -1,0 +1,280 @@
+{
+  "source": "aioff-news-2026-cleaned(1).json",
+  "source_event_clusters": 6427,
+  "events": [
+    {
+      "event_id": "C00006",
+      "title": "강남언니, '개인 정보 유출' 외국인 6만명...해외사업 어쩌나",
+      "publisher": "글로벌이코노믹",
+      "published_at": "2026-09-08T07:53:35+00:00",
+      "url": "https://news.google.com/rss/articles/CBMihwFBVV95cUxOTUFiS0RVV3Bqc21PUUdWZVJELUI0V0hjQzlweVM5QjlBREJDTFpNSndEYWFKVzVaUDQ4SzF5X254akJLLXZYcHJSaFBTMDN6bkJBT2xJT3owTHNnSE9aZWJFdEYwc1pwckwzM19YVl9zczlUVEZkTC1fRmM0UWNvRHpzbVFwOVE?oc=5",
+      "summary": "강남언니, '개인 정보 유출' 외국인 6만명...해외사업 어쩌나 글로벌이코노믹",
+      "article_count": 1,
+      "topics": ["개인정보"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00008",
+      "title": "[단독] 전자결제망 해킹 정황…코엠페이먼츠 카드정보 유출 공지, 대형 PG 연계망도 조사중",
+      "publisher": "데일리시큐",
+      "published_at": "2026-09-08T07:42:30+00:00",
+      "url": "https://news.google.com/rss/articles/CBMibEFVX3lxTFB5Y0stemNLYml4LUlIS19ZOXY1VTBSakNYMUdkSnV3YjhzYjliRG1HdG0wUWNDTkIzeU5jWHdLYUtCelVtWEVUNGdURUdBUS1uZUxjQWVPRVVtU2FkVlZLblAtRzZhVkhhbHhIZQ?oc=5",
+      "summary": "[단독] 전자결제망 해킹 정황…코엠페이먼츠 카드정보 유출 공지, 대형 PG 연계망도 조사중 데일리시큐",
+      "article_count": 1,
+      "topics": ["개인정보"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00018",
+      "title": "45kg 체구로 140kg 들었는데…축하 대신 돌아온 건 '외모 품평·딥페이크 합성'",
+      "publisher": "newsis.com",
+      "published_at": "2026-09-08T07:01:25+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiYEFVX3lxTFB6cFVtWVlYc0wtenVFRkpZR2FwOGZNUEhUX0N1RjRicDJ0ZFZKMHhkbmptMWRmblpSc09xaGpfcHJKVWhseDRNZ3JkTzR6cTdiMGtCckVHdHM5eHpiU3Z4ZdIBeEFVX3lxTE1rRk5LYllmOGRhdnEyZWQtbGVuWlZuc2pPbW1pNzYwYklXRUw0Q0NldVp3OVJ6WENaZDV5THZUZUdHaTR0Z1NHekVtTXpLSUFNVDkzTDZlWjY2bG9pbFZYTXltcFBGbTF6QWE5UTBoY1B0ZmZaVGpMVA?oc=5",
+      "summary": "45kg 체구로 140kg 들었는데…축하 대신 돌아온 건 '외모 품평·딥페이크 합성' newsis.com",
+      "article_count": 2,
+      "topics": ["딥페이크"],
+      "alternates": [
+        {
+          "title": "45kg 체구로 140kg 들었는데…축하 대신 돌아온 건 '외모 품평·딥페이크 합성'",
+          "publisher": "네이트",
+          "url": "https://news.google.com/rss/articles/CBMiU0FVX3lxTE96LVotU0pvcG9qTUluZVpTN3N2S2xxems1bDk3WWU3Z09WM2xlaEFncThZRFZmUmVQdW9JcVFETkg2ZHI0bmstSThLYWp5RzRzb0Rz?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00024",
+      "title": "中, 딥페이크·AI 환각 첫 사법기준⋯저작권 입증책임도 구체화",
+      "publisher": "포커스온경제",
+      "published_at": "2026-09-08T06:10:04+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiXkFVX3lxTE85Ny05OURQZ0p5cWZlQzVaNkQtZElEX2R2M0FYV2pKY1hQbEdaZmt4SGtkVXJEZFFMTkc5WWhteUpJWGdZNHlRS3JUUFd1M2p6Zzh4d1pSRW1DZzZaZkE?oc=5",
+      "summary": "中, 딥페이크·AI 환각 첫 사법기준⋯저작권 입증책임도 구체화 포커스온경제",
+      "article_count": 1,
+      "topics": ["딥페이크", "생성형AI", "저작권"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00009",
+      "title": "“인공지능으로 시 쓰고 글 짓는다”… 고령층 디지털 격차 허무는 ‘생성형 AI’ 실습",
+      "publisher": "복지투데이",
+      "published_at": "2026-09-08T07:40:41+00:00",
+      "url": "https://news.google.com/rss/articles/CBMibEFVX3lxTE5pTkRTQUhMM3Y5Rmg1UlFkZFp1cjhEamRsZndNY3N3TkR6RjMtbXZGT1NRMUFNc1NwQXpBd2VrWmRWZlhZYWNOUXQwb2VkYTR5U3FuRUR0TTFLRnFrbURka2h1Mk1fYXlGZUJtaw?oc=5",
+      "summary": "“인공지능으로 시 쓰고 글 짓는다”… 고령층 디지털 격차 허무는 ‘생성형 AI’ 실습 복지투데이",
+      "article_count": 1,
+      "topics": ["생성형AI"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00053",
+      "title": "경북 안동시, 공무원 생성형 AI 역량 강화…행정업무 혁신 속도",
+      "publisher": "네이트",
+      "published_at": "2026-09-08T00:45:08+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiU0FVX3lxTE5zX1dxamJRZE5zRzhhSHNvMmF2RFVQSHZmN0tmQXlMQnlDY0NqdWJOYkV1c2hBWlFpOWk5clpNcXB2YW9uemh6cHBnRjVyeUY1WUkw?oc=5",
+      "summary": "경북 안동시, 공무원 생성형 AI 역량 강화…행정업무 혁신 속도 네이트",
+      "article_count": 1,
+      "topics": ["생성형AI"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00114",
+      "title": "서울 동작구 부모, 우리 아이 사이버폭력 위험 신호등이 켜지면 먼저 달려간다",
+      "publisher": "행정수도뉴스",
+      "published_at": "2026-09-06T22:30:51+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZ0FVX3lxTE56d1NxTDVUdS1KUDBNbFJkcEZiaXByS0JKVzBJZEtITUdhLWtyUEdUMVJyWXVRSHBCV005MDUwSU9YSFVxLTVXcU4wVVhZZzM5TlN2WkRrUW5GY1pPdVNMeHh5QU9hVjg?oc=5",
+      "summary": "서울 동작구 부모, 우리 아이 사이버폭력 위험 신호등이 켜지면 먼저 달려간다 행정수도뉴스",
+      "article_count": 2,
+      "topics": ["사이버폭력"],
+      "alternates": [
+        {
+          "title": "동작구 부모, 우리 아이 사이버폭력 ‘위험 신호등’ 켜지면 먼저 달려간다",
+          "publisher": "welfarenews.net",
+          "url": "https://news.google.com/rss/articles/CBMib0FVX3lxTE40dmFSTEN1dHJ1dnJBY1FmREI2NkRFM3ozV2l0d05pbjdDSTBxU3N4akljbmhkb0c5b1JuYW5wZm5Gc1BnMC12c0x3QXRqV3F0b05oS3NVTHRWTE1ZT2Z5Z2VOa2VTQmh3YVgwLXBnMA?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00261",
+      "title": "서울시교육청, 청소년 교통안전·사이버 폭력 예방 등 위한 온라인 캠페인 추진",
+      "publisher": "한국대학신문",
+      "published_at": "2026-09-02T00:33:51+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZkFVX3lxTE8wRUVOWnNNT1FRcFV6NFNsLWd3bFg0M2NoWjdqRmdLaTB0YUJsX24xTkFDVUszeHVDeWNMWjNWamM3X3Rmc2hDd2k3R1BXVHY2U29MYWVSNW54MW9CMjdFdU41RjhuUQ?oc=5",
+      "summary": "서울시교육청, 청소년 교통안전·사이버 폭력 예방 등 위한 온라인 캠페인 추진 한국대학신문",
+      "article_count": 2,
+      "topics": ["사이버폭력"],
+      "alternates": [
+        {
+          "title": "교통안전 지키고 사이버 폭력·도박 근절…서울교육청 캠페인",
+          "publisher": "newsis.com",
+          "url": "https://news.google.com/rss/articles/CBMiYEFVX3lxTE1nZnRjUTZlcHdDWnRaV3AyUDl2ZUxyUV9LOExsUVdLcUk3TVo2ZnlWSkh3NlFlbVlBQzA2c25JbFRLYzRBMkh1ZEI0ZlpGeFQxbkhwVkhqMURxRk1vY1ZVMdIBeEFVX3lxTE5jNk5GalN6MUdsTHdWVGRUcG9oc05ReDJKa043bkpyMTNrYU9TcEFzc1NKR0NKZXZ2WEtFNEFNZmpHZUM1UzdXQ01DYm8waVVFWE1TOS1fUXZCeWhteFd5NXVCYmdsMGdYMWdFR01XOFJPdmtteng3ZQ?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00012",
+      "title": "[영상] 'SNS 중독' 소송서 백기 든 메타…돈보다 더 치명적인 건",
+      "publisher": "koreancenter.or.kr",
+      "published_at": "2026-09-08T07:28:12+00:00",
+      "url": "https://news.google.com/rss/articles/CBMidEFVX3lxTFB6bFNoV0FtTVNKWlBDSnAzNzVhQmZfU3lhdTFlOGlDMHhrTzdhc3YzdC1OWHRsUERNd0xpXzhhUEF4SkUza0RCTXZqRUJEWGw1d3FsOGhYcWNMSThXS1ZqOTctRGxCeDN5U2MzSmh5ZG1TSFV2?oc=5",
+      "summary": "[영상] 'SNS 중독' 소송서 백기 든 메타…돈보다 더 치명적인 건 koreancenter.or.kr",
+      "article_count": 2,
+      "topics": ["SNS안전"],
+      "alternates": [
+        {
+          "title": "인'스타'그램 세상|[영상] 'SNS 중독' 소송서 백기 든 메타…돈보다 더 치명적인 건",
+          "publisher": "ZUM 뉴스",
+          "url": "https://news.google.com/rss/articles/CBMifEFVX3lxTE9feTdkRzdzbVpxSFFMbVlEVnpsNmFjcG81aVA5dVpENWZHenVxd041Z1BtLW1JN1ExR1pnUVlQejRNSnhSRGU2Z1FEMzlEcUNMcDM3bjJ6RVIxR3kzbVZNZ1hDNFh0dXBVdWkzZDNpTjRyUFlaakE2azZHZGQ?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00013",
+      "title": "김종철 방미통위원장, 청소년 SNS 규제에 “플랫폼 책임이 기본 방향”",
+      "publisher": "데일리안",
+      "published_at": "2026-09-08T07:26:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMigwJBVV95cUxNNmpxcElzSlJwY2NCbmx5b0RCc2VOMnVOd1lWR19jTjhCZGNsVk5TQVFobGRfbC1RS2toV3JWRWI0T3JrWk9CRDk5S2JHSEZvZ2lReW40NU5nZm1SSkRnSXRmckxQa0c5SDQ1LS1OOU1sZnpZMVpWR2NoektJWGNrMWQya2pUVlNXbHR5N1JOaDJIYW4zUGh0VFpKMk80dDN5UmFBRGIwcmZJY2xyUkk2R0NpVjJDeVBTcTlyS0JxZXJiX0kzVGpSaVRaeUx4YzM3N2R2OGNNejJzY0JsYzhxUEJUZ2Y5ZmhXZHdkMVFoN1FQRm9LV3FfY3RTUFZuMGlTUWZJ?oc=5",
+      "summary": "김종철 방미통위원장, 청소년 SNS 규제에 “플랫폼 책임이 기본 방향” 데일리안",
+      "article_count": 1,
+      "topics": ["SNS안전"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00025",
+      "title": "中최고법원, 'AI분쟁' 재판기준 마련…저작권침해·딥페이크 대응",
+      "publisher": "연합뉴스",
+      "published_at": "2026-09-08T05:38:44+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiYEFVX3lxTE5rd1o2SnVKWUNPUE5kaUVNdW9WdUZBTTc0V3UxQk9NVi0zLTBuS1dpaWxRSnAzbWVSN2xUMVAxbmJTU0lzaGVUOVBzdEktMjlTc05MUlZhMHd3MTc2R2xmZNIBYEFVX3lxTE5rd1o2SnVKWUNPUE5kaUVNdW9WdUZBTTc0V3UxQk9NVi0zLTBuS1dpaWxRSnAzbWVSN2xUMVAxbmJTU0lzaGVUOVBzdEktMjlTc05MUlZhMHd3MTc2R2xmZA?oc=5",
+      "summary": "中최고법원, 'AI분쟁' 재판기준 마련…저작권침해·딥페이크 대응 연합뉴스",
+      "article_count": 3,
+      "topics": ["딥페이크", "저작권"],
+      "alternates": [
+        {
+          "title": "中최고법원, 'AI분쟁' 재판기준 마련…저작권침해·딥페이크 대응",
+          "publisher": "네이트",
+          "url": "https://news.google.com/rss/articles/CBMiU0FVX3lxTE9kU0k2bnhlQ1N3U3dTbFlxTFFoeTFNXzNTc2VBQ3NkMnRMSWRrMjhOUFNGUm5IaHR0bUJ6Z04xSnlSOGpxaXdnby1iUVBwbVM1R0tR?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00003",
+      "title": "문체부, 문화기술 역대 최대 2406억원 편성…AI 공연·저작권 키운다",
+      "publisher": "파이낸셜뉴스",
+      "published_at": "2026-09-07T23:00:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTFB4azI3Q2FHNGpUYTdPdUJxeHM5ckhQbnhkUkNPLUVFVWNabHhMYUl6MjR3SG5remlKR0Vrcll4akNPdXF2aHZ6VTdIOURfbzF6Rk51VTFTTFJCQQ?oc=5",
+      "summary": "문체부, 문화기술 역대 최대 2406억원 편성…AI 공연·저작권 키운다 파이낸셜뉴스",
+      "article_count": 3,
+      "topics": ["저작권"],
+      "alternates": [
+        {
+          "title": "콘서트 '초몰입' 기술부터 AI 저작권까지···문화기술 생태계 조성에 2406억원 편성",
+          "publisher": "네이트",
+          "url": "https://news.google.com/rss/articles/CBMiU0FVX3lxTFByTjVGS0o5VWFzZGVwY3pTcXZwelQyZ0c0czRndUw4cjU0N1VHLW45SWdpc3dHYVZDd1o0NHRNd0RIUUd0S3k3aWEwSEJoVjlGWGh3?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00021",
+      "title": "디지털 성범죄 피해자 신상 노출한 구글···정부, 법령 위반 검토",
+      "publisher": "seoulfn.com",
+      "published_at": "2026-09-08T06:42:15+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiakFVX3lxTE05aFlvdGh0ZzBhUmFZUHBKT2psalFWMmk1Y0trWW5fcE1tYkJhRVRudmI2V0xaQUhZaTVGS1RGUXduYmtYUTEyNkpWaVBjTFh3N1MwVXRkM1dkUkNlbVE1UHNRczI0RlBPV0E?oc=5",
+      "summary": "디지털 성범죄 피해자 신상 노출한 구글···정부, 법령 위반 검토 seoulfn.com",
+      "article_count": 1,
+      "topics": ["디지털안전"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00029",
+      "title": "[단독] 구글, 불법촬영 삭제 요청 피해자 이름·직장·전화 노출시켰다",
+      "publisher": "한겨레",
+      "published_at": "2026-09-08T05:23:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZEFVX3lxTE1UY1VDcXJjV2hPZXVkOEpGZGxQTzZyVjk0S1pIWVRINk03N3lWWUJSR1FvNVlsUVNfTk92elhqazlpUDZtbXlJeGJiUnBuMnNkUW5OcHhlX1YtcnZEcWZOZ25jT0E?oc=5",
+      "summary": "[단독] 구글, 불법촬영 삭제 요청 피해자 이름·직장·전화 노출시켰다 한겨레",
+      "article_count": 1,
+      "topics": ["디지털안전"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00155",
+      "title": "방미심위, 전국 청소년 대상 미디어 윤리 교육 실시",
+      "publisher": "연합뉴스TV",
+      "published_at": "2026-09-04T05:47:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZ0FVX3lxTFBEVTlSR1lBbDg4N09QMjI3ZmwyWXB3XzZaVy1FZFk0MHFKaGR1WWowMHRpMWlsazBiRjlwZWpzX3FhR2NIRG9GNmx2SmZvLWl2UDloY2lxVVNMVVZCeHJCcWhqck1CTDA?oc=5",
+      "summary": "방미심위, 전국 청소년 대상 미디어 윤리 교육 실시 연합뉴스TV",
+      "article_count": 7,
+      "topics": ["리터러시"],
+      "alternates": [
+        {
+          "title": "방미심위, 전국 청소년 대상 미디어 윤리 교육",
+          "publisher": "네이트",
+          "url": "https://news.google.com/rss/articles/CBMieEFVX3lxTE41bnB1cFEyb1JTWVNIXy1wM2JhSlJjZ3YxRXNwd1RWWVVEZW9ELXF2S0tpeFJ4VXRxeTZiS1hIdEtxMW1wQlRvdm1LRGpRX0VrR0ktY2NxWUpNMDhtMVFpQVd0R0s2LTVVLXZrU1FrS0xzMVdBUjM5Sg?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00273",
+      "title": "[디지털 리터러시] 거대 플랫폼의 그림자",
+      "publisher": "busan.com",
+      "published_at": "2026-09-02T09:02:55+00:00",
+      "url": "https://news.google.com/rss/articles/CBMidEFVX3lxTE1HdGgycDh4RFY2aXhub1lzZWdid2pzOENMTWgyem5neEVMUU5tcm1LNW0wSjVkYXpuM0tYNTdFM2ZFUHpNT2JOM1pTdmVBSGNSRk5BUFZ3VHlqVzVDc211MVZFaW1ESE5UeTkzTjE0NjlsNV8x?oc=5",
+      "summary": "[디지털 리터러시] 거대 플랫폼의 그림자 busan.com",
+      "article_count": 1,
+      "topics": ["리터러시"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00020",
+      "title": "부평구청소년상담복지센터, 2026년도‘인터넷·스마트폰 과의존 예방교육’ 운영 성료",
+      "publisher": "인천의소리",
+      "published_at": "2026-09-08T02:16:28+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZ0FVX3lxTE1iTXk2N3VvMWRCYXEwZUZSR0tYczF2SlpSVHVnank0X2lBT0FBbmZjMnd6OEVZNmNfMHdJa0hBdlRvc0toVlE0TEFnZGpuMUt6Y2VBZEI0ZEptc3pid2phNUJva1dndTg?oc=5",
+      "summary": "부평구청소년상담복지센터, 2026년도‘인터넷·스마트폰 과의존 예방교육’ 운영 성료 인천의소리",
+      "article_count": 3,
+      "topics": ["디지털건강"],
+      "alternates": [
+        {
+          "title": "인천 부평구, 초등생 1261명 인터넷·스마트폰 과의존 예방교육",
+          "publisher": "여성종합뉴스",
+          "url": "https://news.google.com/rss/articles/CBMiWkFVX3lxTE56QTlwTmNWZHlJVzJ0SHBIc2RRUl9HRzlKLUoya1pHekhzbHpjWWtwWE54MDlRcHF3Q041M05LVUFXRlBaenA4NE43Ym5NV1pTRnJYd3RVY2ROZw?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00092",
+      "title": "경기도교육청과천도서관, 스마트폰 과의존 예방 위한 폰 프리 존 전면 도입",
+      "publisher": "모닝투데이",
+      "published_at": "2026-09-07T02:56:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiTEFVX3lxTFB4MGU3SS1MM1lBaWZYakhLWjdpRGo4UUhHMUNIRHVfTjV1SENmS2xuc1BmYlBVVXVGUEx2d0dHXzJpNHd1R0lRQXR3YTg?oc=5",
+      "summary": "경기도교육청과천도서관, 스마트폰 과의존 예방 위한 폰 프리 존 전면 도입 모닝투데이",
+      "article_count": 1,
+      "topics": ["디지털건강"],
+      "alternates": []
+    },
+    {
+      "event_id": "C00007",
+      "title": "방미통위원장 \"허위조작정보 감독권 법적 근거 취약…입법 보완해야\" - 머니투데이",
+      "publisher": "머니투데이",
+      "published_at": "2026-09-08T07:53:29+00:00",
+      "url": "https://news.google.com/rss/articles/CBMiZ0FVX3lxTE5ZTXl1UER4eEtucnQyQVFRcVZRdHlFYTJ3cGZyREN5R1BTN1F5eGVjSUpyTjQ5LVBnMGVyb3dEQm1wUDNqdlJBZFc2bXV0SlRtNDZVX003Y25yNXhfTUptSDU1SFhSWDDSAWxBVV95cUxPUmI0YlpPd1FPQ29mWEhQMTdOQjdCZnlyYmRBVHM5LTRlTnFSMy1KY3hsYWxOZDdNbGs5eEc1OUE0RndTUjhNUy1TYTlYQy16dkFMXzJIdWpiSkxWeUlYWDhpM0I4V29VZ054ZHA?oc=5",
+      "summary": "방미통위원장 \"허위조작정보 감독권 법적 근거 취약…입법 보완해야\" - 머니투데이 머니투데이",
+      "article_count": 3,
+      "topics": ["허위정보"],
+      "alternates": [
+        {
+          "title": "방미통위원장 \"허위정보 플랫폼 감독권 취약…입법 보완 필요성\"",
+          "publisher": "koreancenter.or.kr",
+          "url": "https://news.google.com/rss/articles/CBMidEFVX3lxTFBDblJHN2hCbHZQbTdTX1J4d2VucGI1R08wa05tUS1naFRmQ0doeEVNdkgwTWJNRjk0eGQ2RmpOU05TUV9RdFlnbUdLdTZ1NmFHUWlTU1NQNGxLX2IwRVRVa0V0SEJmQmVJa3JvSjVpanl5MkhH?oc=5"
+        }
+      ]
+    },
+    {
+      "event_id": "C00016",
+      "title": "가짜뉴스법 자율규제 '디씨' 뿐…구글·네카오 미제출",
+      "publisher": "네이트",
+      "published_at": "2026-09-08T07:07:00+00:00",
+      "url": "https://news.google.com/rss/articles/CBMieEFVX3lxTFBLbmpEem0tSDlEV2ZJQ2NVUVRUTV81OURqMzQ1ZU9yOVMzRHFFa3BHV2hBdGRuWUhHSVZBWmVZTFBxRG9weW0wYkV2SUxVSEg4aUpWRGpfMDNlOTdaTkZlRnpyZ1JyRm93dXhWUUw0ZkpPXzVQS2hjXw?oc=5",
+      "summary": "가짜뉴스법 자율규제 '디씨' 뿐…구글·네카오 미제출 네이트",
+      "article_count": 1,
+      "topics": ["허위정보"],
+      "alternates": []
+    }
+  ]
+}
