@@ -49,20 +49,41 @@ def value_between(lines: list[str], label: str, next_labels: tuple[str, ...]) ->
     return norm(" / ".join(vals))
 
 
+def value_from_text(text: str, label: str, next_label: str) -> str:
+    m = re.search(rf"{re.escape(label)}\s*(.*?)\s*{re.escape(next_label)}", text, re.S)
+    return norm(m.group(1)) if m else ""
+
+
 def material_containers(soup: BeautifulSoup):
-    seen = set()
+    """Find one DOM container per list item without depending on site CSS classes.
+
+    The archive page nests the field labels quite deeply.  The previous parser only
+    walked nine ancestors from the `제작년도` text node, which can stop before the
+    actual item container and therefore return zero items even though the labels are
+    present in the response.  Walk farther and select the smallest ancestor that
+    contains exactly one complete metadata set.
+    """
+    seen: set[int] = set()
     containers = []
-    for text_node in soup.find_all(string=re.compile("제작년도")):
+    label_re = re.compile(r"^(?:대상|제작년도|자료유형|주제)$")
+
+    for text_node in soup.find_all(string=lambda s: bool(s and label_re.search(norm(str(s))))):
         node = text_node.parent
         best = None
-        for _ in range(9):
-            if node is None:
+        for _ in range(24):
+            if node is None or getattr(node, "name", None) in ("html", "body"):
                 break
-            text = norm(node.get_text(" ", strip=True))
-            if all(label in text for label in ("대상", "제작년도", "자료유형", "주제")):
-                if text.count("제작년도") == 1 and len(text) < 3500:
-                    best = node
-                    break
+            lines = lines_of(node)
+            # Exact line counts distinguish a single list item from the whole list,
+            # which contains the same labels many times.
+            if (
+                lines.count("대상") == 1
+                and lines.count("제작년도") == 1
+                and lines.count("자료유형") == 1
+                and lines.count("주제") == 1
+            ):
+                best = node
+                break
             node = node.parent
         if best is None:
             continue
@@ -91,22 +112,33 @@ def parse_card(card, page_index: int) -> dict:
     lines = lines_of(card)
     if not lines:
         return {}
-    try:
-        target_idx = lines.index("대상")
-    except ValueError:
+
+    full_text = norm(card.get_text(" ", strip=True))
+    if not all(label in full_text for label in ("대상", "제작년도", "자료유형", "주제")):
         return {}
 
-    title_candidates = [x for x in lines[:target_idx] if x not in ("리스트형", "갤러리형")]
-    title = title_candidates[-1] if title_candidates else ""
+    # Image alt is the most stable title source on both list/grid markup.
+    img = card.find("img", alt=True)
+    title = norm(img.get("alt") if img else "")
     if not title:
-        img = card.find("img", alt=True)
-        title = norm(img.get("alt") if img else "")
+        try:
+            target_idx = lines.index("대상")
+        except ValueError:
+            target_idx = len(lines)
+        title_candidates = [x for x in lines[:target_idx] if x not in ("리스트형", "갤러리형")]
+        title = title_candidates[-1] if title_candidates else ""
 
-    target = value_between(lines, "대상", ("제작년도",))
-    year = value_between(lines, "제작년도", ("자료유형",))
-    material_type = value_between(lines, "자료유형", ("주제",))
+    target = value_between(lines, "대상", ("제작년도",)) or value_from_text(full_text, "대상", "제작년도")
+    year = value_between(lines, "제작년도", ("자료유형",)) or value_from_text(full_text, "제작년도", "자료유형")
+    material_type = value_between(lines, "자료유형", ("주제",)) or value_from_text(full_text, "자료유형", "주제")
     topics_text = value_between(lines, "주제", ("조회수", "자세히보기", "다운로드"))
+    if not topics_text:
+        m = re.search(r"주제\s*(.*?)\s*(?:조회수|자세히보기|다운로드)", full_text, re.S)
+        topics_text = norm(m.group(1)) if m else ""
     topics = re.findall(r"#[^\s#/]+", topics_text)
+
+    if not title or not target or not year:
+        return {}
 
     detail_url = ""
     attachments = []
@@ -154,8 +186,8 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
     for page in range(1, max_pages + 1):
         r = session.get(LIST_URL, params={"pageIndex": page}, timeout=30)
         r.raise_for_status()
-        # Parse raw bytes so BeautifulSoup can honor the page's own charset metadata.
-        # requests.text may otherwise default to ISO-8859-1 and corrupt Korean labels.
+        # Let BeautifulSoup honor the charset declared by the page instead of
+        # depending on requests/chardet's guess for Korean text.
         soup = BeautifulSoup(r.content, "html.parser")
         cards = material_containers(soup)
         rows = [parse_card(c, page) for c in cards]
@@ -163,12 +195,14 @@ def crawl_materials(session: requests.Session, max_pages: int = 40) -> list[dict
         signature = tuple(x["source_key"] for x in rows)
         if not rows:
             if page == 1:
-                page_text = norm(soup.get_text(" ", strip=True))
+                raw_text = soup.get_text(" ", strip=True)
                 print(
                     "DEBUG: first page produced no rows; "
                     f"status={r.status_code}, bytes={len(r.content)}, "
                     f"requests_encoding={r.encoding!r}, apparent_encoding={r.apparent_encoding!r}, "
-                    f"has_education_room={'교육자료실' in page_text}, has_year_label={'제작년도' in page_text}",
+                    f"has_education_room={'교육자료실' in raw_text}, "
+                    f"has_year_label={'제작년도' in raw_text}, "
+                    f"candidate_cards={len(cards)}",
                     file=sys.stderr,
                 )
             break
