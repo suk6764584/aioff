@@ -56,6 +56,9 @@ class EducationDB:
                 source_key TEXT NOT NULL UNIQUE,
                 title TEXT NOT NULL,
                 target TEXT NOT NULL DEFAULT '',
+                target_raw TEXT NOT NULL DEFAULT '',
+                target_inferred INTEGER NOT NULL DEFAULT 0,
+                target_evidence TEXT NOT NULL DEFAULT '',
                 year TEXT NOT NULL DEFAULT '',
                 material_type TEXT NOT NULL DEFAULT '',
                 topics_json TEXT NOT NULL DEFAULT '[]',
@@ -113,17 +116,34 @@ class EducationDB:
             );
             """
         )
+
+        # Backward-compatible migration for a DB created before provenance fields
+        # were added. This is intentionally additive and does not rewrite data.
+        columns = {r[1] for r in self.conn.execute("PRAGMA table_info(materials)").fetchall()}
+        for name, ddl in (
+            ("target_raw", "TEXT NOT NULL DEFAULT ''"),
+            ("target_inferred", "INTEGER NOT NULL DEFAULT 0"),
+            ("target_evidence", "TEXT NOT NULL DEFAULT ''"),
+        ):
+            if name not in columns:
+                self.conn.execute(f"ALTER TABLE materials ADD COLUMN {name} {ddl}")
         self.conn.commit()
 
     def upsert_material(self, row: dict[str, Any]) -> int:
         topics_json = json.dumps(row.get("topics") or [], ensure_ascii=False)
         self.conn.execute(
             """
-            INSERT INTO materials(source_key,title,target,year,material_type,topics_json,source_url,list_page,updated_at)
-            VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+            INSERT INTO materials(
+              source_key,title,target,target_raw,target_inferred,target_evidence,
+              year,material_type,topics_json,source_url,list_page,updated_at
+            )
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
             ON CONFLICT(source_key) DO UPDATE SET
               title=excluded.title,
               target=excluded.target,
+              target_raw=excluded.target_raw,
+              target_inferred=excluded.target_inferred,
+              target_evidence=excluded.target_evidence,
               year=excluded.year,
               material_type=excluded.material_type,
               topics_json=excluded.topics_json,
@@ -132,7 +152,8 @@ class EducationDB:
               updated_at=CURRENT_TIMESTAMP
             """,
             (
-                row["source_key"], row["title"], row.get("target", ""), row.get("year", ""),
+                row["source_key"], row["title"], row.get("target", ""), row.get("target_raw", row.get("target", "")),
+                1 if row.get("target_inferred") else 0, row.get("target_evidence", ""), row.get("year", ""),
                 row.get("material_type", ""), topics_json, row.get("source_url", ""), row.get("list_page"),
             ),
         )
@@ -252,6 +273,7 @@ class EducationDB:
 
     def status(self) -> dict[str, Any]:
         material_count = self.conn.execute("SELECT COUNT(*) FROM materials").fetchone()[0]
+        inferred_count = self.conn.execute("SELECT COUNT(*) FROM materials WHERE target_inferred=1").fetchone()[0]
         attachment_count = self.conn.execute("SELECT COUNT(*) FROM attachments").fetchone()[0]
         chunk_count = self.conn.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
         embedded_count = self.conn.execute("SELECT COUNT(*) FROM chunks WHERE embedding IS NOT NULL").fetchone()[0]
@@ -259,6 +281,7 @@ class EducationDB:
         return {
             "path": str(self.path),
             "materials": material_count,
+            "target_inferred_materials": inferred_count,
             "attachments": attachment_count,
             "chunks": chunk_count,
             "embedded_chunks": embedded_count,
