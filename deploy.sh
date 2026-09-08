@@ -51,7 +51,7 @@ fi
 
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
-  literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
+  aioff_ui.py literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
   literacy_kobaco_app_18.py literacy_kobaco_app_17.py auth_proto.py education_db.py \
   kobaco_db.py migrate_db.py education_archive_parser.py download_education_sources.py \
   extract_education_sources.py embed_education_db.py
@@ -59,7 +59,7 @@ echo "[4/6] Validate current application"
 .venv/bin/python - <<'PY'
 import education_archive_parser
 import download_education_sources
-import literacy_kobaco_app_21 as m
+import aioff_ui as m
 
 assert m.app is not None
 assert education_archive_parser.LIST_URL
@@ -79,13 +79,15 @@ for lesson_id, prefix in expected.items():
         raise SystemExit(f"ERROR: {lesson_id} contains unexpected case ids")
     print(f"{lesson_id}: {len(ids)} cases")
 
-page = m._render_index_kobaco_v21()
+page = m._render_index_aioff_ui()
 for marker in (
     'AI가 읽은 광고',
     '리터러시 교육 안내서',
     '청소년·OTT 통계',
     'LOGIN OFF',
     'education_',
+    'aioff-learning-columns',
+    'aioff-composer-side',
 ):
     if marker not in page:
         raise SystemExit(f"ERROR: root UI marker missing: {marker}")
@@ -111,7 +113,7 @@ for path in (
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
 
-print('V21 IMPORT + ROUTE + LAYOUT CHECK OK')
+print('UI IMPORT + ROUTE + LAYOUT CHECK OK')
 PY
 
 .venv/bin/python migrate_db.py
@@ -143,9 +145,9 @@ echo
 curl -fsS --max-time 5 http://127.0.0.1:3000/api/auth/me
 echo
 
-if ! grep -q 'literacy_kobaco_app_21:app' /etc/systemd/system/aioff.service; then
-  echo "ERROR: service is not pointing to v21"
+if ! grep -q 'aioff_ui:app' /etc/systemd/system/aioff.service; then
+  echo "ERROR: service is not pointing to aioff_ui"
   exit 1
 fi
 
-echo "DEPLOY OK: literacy_kobaco_app_21"
+echo "DEPLOY OK: aioff_ui"
