@@ -65,6 +65,30 @@ def _render_entry_index() -> str:
   display:none!important;
 }
 
+/* State label is status text, not a browser-default button. */
+.aioff-auth-state{
+  position:static!important;
+  display:inline-flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+  width:auto!important;
+  min-width:0!important;
+  height:30px!important;
+  min-height:30px!important;
+  padding:0!important;
+  margin:0!important;
+  border:0!important;
+  border-radius:0!important;
+  background:transparent!important;
+  color:#514b45!important;
+  font-size:10px!important;
+  font-weight:800!important;
+  line-height:1!important;
+  box-shadow:none!important;
+  white-space:nowrap!important;
+  cursor:default!important;
+}
+
 /* Re-create exactly one state dot: gray OFF / blue ON. */
 .aioff-auth-state::before{
   content:""!important;
@@ -129,24 +153,26 @@ def _render_entry_index() -> str:
   box-shadow:none!important;
 }
 
-/* Logged in: greeting + LOGIN ON + logout on one row. */
+/* Logged in: greeting + LOGIN ON + logout on one centered row. */
 .aioff-auth-dock.is-on{
   display:inline-flex!important;
   flex-direction:row!important;
   align-items:center!important;
   justify-content:flex-end!important;
-  gap:8px!important;
+  gap:7px!important;
+  min-height:30px!important;
 }
 .aioff-auth-dock.is-on .aioff-auth-links{
   position:static!important;
   display:inline-flex!important;
   flex-direction:row!important;
   align-items:center!important;
-  gap:6px!important;
+  justify-content:center!important;
+  gap:0!important;
   width:auto!important;
-  height:auto!important;
+  height:30px!important;
   min-width:0!important;
-  min-height:0!important;
+  min-height:30px!important;
   padding:0!important;
   margin:0!important;
   background:transparent!important;
@@ -166,7 +192,7 @@ def _render_entry_index() -> str:
   min-height:30px!important;
   padding:0 11px!important;
   margin:0!important;
-  border:1px solid #cfc7bc!important;
+  border:1px solid #d7d0c6!important;
   border-radius:7px!important;
   background:#f7f3ed!important;
   color:#514b45!important;
@@ -176,8 +202,14 @@ def _render_entry_index() -> str:
   box-shadow:none!important;
 }
 .aioff-auth-greeting{
+  display:inline-flex!important;
+  align-items:center!important;
+  height:30px!important;
+  margin:0!important;
+  padding:0!important;
   font-size:10px!important;
   font-weight:750!important;
+  line-height:1!important;
   color:#4c4742!important;
   white-space:nowrap!important;
 }
