@@ -13,7 +13,6 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 import aioff_ui as current
-import auth_proto as auth
 
 app = current.app
 base = current.base
@@ -22,7 +21,7 @@ flow = current.flow
 ROOT = Path(__file__).resolve().parent
 NEWS_SEED = ROOT / "news_seed.json"
 _NEWS_META_CACHE: dict[str, dict] = {}
-_NEWS_PACK_CACHE: dict[tuple[str, str, int], dict] = {}
+_NEWS_PACK_CACHE: dict[str, dict] = {}
 _NEWS_IMAGE_CACHE: dict[str, tuple[bytes, str] | None] = {}
 
 
@@ -289,7 +288,7 @@ def aioff_news_thumb(case_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Grade-adaptive news reading: use actual article text when retrievable.
+# News reading: use actual article text when retrievable.
 # If the article body cannot be resolved, do not invent details.
 # ---------------------------------------------------------------------------
 class NewsStudyDraft(BaseModel):
@@ -297,22 +296,20 @@ class NewsStudyDraft(BaseModel):
     questions: list[str] = []
 
 
-def _news_profile(user: dict | None) -> tuple[str, str, int]:
-    level = str((user or {}).get("school_level") or "")
-    grade = int((user or {}).get("grade") or 0)
-    profile = f"{level} {grade}학년" if grade else (level or "학생")
-    rules, _ = current._learning_level_rules(user)
-    return profile, rules, grade
+def _news_profile() -> tuple[str, str, int]:
+    return (
+        "학생",
+        "학생이 이해할 수 있는 자연스러운 표현을 사용하고, 기사에 나온 핵심 인물·기관·수치·쟁점은 필요한 범위에서 보존한다.",
+        0,
+    )
 
 
-def _news_study_pack(case: dict, user: dict | None) -> dict:
-    level = str((user or {}).get("school_level") or "")
-    grade = int((user or {}).get("grade") or 0)
-    key = (str(case.get("id") or ""), level, grade)
+def _news_study_pack(case: dict) -> dict:
+    key = str(case.get("id") or "")
     if key in _NEWS_PACK_CACHE:
         return dict(_NEWS_PACK_CACHE[key])
 
-    profile, rules, _ = _news_profile(user)
+    profile, rules, _ = _news_profile()
     meta = _fetch_news_meta(case)
     description = _clean_text(meta.get("description") or "")
     body = _clean_text(meta.get("body") or "")
@@ -327,8 +324,8 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
     ) or "- 동일 사건 다른 기사 메타데이터 없음"
 
     if source_text:
-        prompt = f'''다음 실제 뉴스 사례를 {profile} 학생용 미디어 리터러시 학습자료로 재구성하라.
-수준 규칙: {rules}
+        prompt = f'''다음 실제 뉴스 사례를 {profile}용 미디어 리터러시 학습자료로 재구성하라.
+표현 규칙: {rules}
 
 기사 제목: {case.get('title','')}
 언론사: {case.get('source_name','')}
@@ -341,7 +338,7 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
 
 규칙:
 1. 위 텍스트가 뒷받침하는 내용만 사용하고 사실을 새로 만들지 않는다.
-2. reading은 학생이 원문을 읽기 전에 사건의 핵심과 확인 포인트를 이해할 수 있도록 3~5문단으로 쓴다.
+2. reading은 원문을 읽기 전에 사건의 핵심과 확인 포인트를 이해할 수 있도록 3~5문단으로 쓴다.
 3. 기사 내용 자체와 기사 제목의 해석·평가 표현을 구분해 설명한다.
 4. 무엇이 아직 원문·공식자료·다른 보도로 확인되어야 하는지도 분명히 쓴다.
 5. questions는 정확히 3개. 질문은 reading에 실제 표시되는 내용과 기사 메타데이터만으로 생각할 수 있게 한다.
@@ -360,7 +357,6 @@ JSON으로 반환하라.'''
         except Exception as exc:
             base.core.logger.warning("news study generation failed: %s", type(exc).__name__)
 
-    # Safe fallback when the publisher page cannot be read: teach from metadata only.
     count = int(case.get("news_article_count") or 1)
     reading = [
         f"이 사례는 {case.get('source_name') or '언론사'}가 {str(case.get('news_published_at') or '')[:10] or '게시일 미확인'}에 보도한 ‘{case.get('title') or ''}’ 기사입니다.",
@@ -378,7 +374,7 @@ JSON으로 반환하라.'''
 
 
 # ---------------------------------------------------------------------------
-# Case start: news gets a generated, grade-adaptive first question.
+# Case start: news gets a generated first question.
 # ---------------------------------------------------------------------------
 _ORIGINAL_CASE_START = flow.case_start
 base._remove_route("/api/case-start", "POST")
@@ -393,8 +389,7 @@ def runtime_case_start(req: flow.CaseStartRequest, request: Request):
         return _ORIGINAL_CASE_START(req)
 
     _, case = found
-    user = auth.current_user(request.cookies.get(auth.COOKIE_NAME))
-    pack = _news_study_pack(case, user)
+    pack = _news_study_pack(case)
     questions = list(pack.get("questions") or [])
     opening = questions[0] if questions else str(case.get("opening_question") or "기사에서 확인되는 사실과 해석을 구분해보세요.")
 
@@ -413,7 +408,7 @@ def runtime_case_start(req: flow.CaseStartRequest, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# News tutor: semantic response, no keyword chasing, grade-adaptive.
+# News tutor: semantic response, no keyword chasing.
 # ---------------------------------------------------------------------------
 _ORIGINAL_CHAT_STREAM = current.aioff_chat_stream
 base._remove_route("/api/chat-stream", "POST")
@@ -429,18 +424,17 @@ def runtime_chat_stream(req: current.AioffTutorChatRequest, request: Request):
         return _ORIGINAL_CHAT_STREAM(req, request)
 
     case = found[1]
-    user = auth.current_user(request.cookies.get(auth.COOKIE_NAME))
-    pack = _news_study_pack(case, user)
-    profile, _, _ = _news_profile(user)
-    level_rule = current._tutor_level_rules(user)
+    pack = _news_study_pack(case)
+    profile, _, _ = _news_profile()
+    level_rule = "학생의 답을 짧고 자연스럽게 해석하고, 화면에 표시된 근거와 연결해 설명한다."
     reading = "\n".join(f"- {x}" for x in pack.get("reading", []))
     questions = "\n".join(f"- {x}" for x in pack.get("questions", []))
     prior = base.core.messages(sid, 24)
     history = "\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior)
 
     prompt = f'''너는 최신 뉴스를 이용한 디지털 리터러시 튜터다.
-학생 수준: {profile}
-피드백 수준: {level_rule}
+대상: {profile}
+피드백 규칙: {level_rule}
 
 [기사]
 제목: {case.get('title','')}
@@ -467,7 +461,7 @@ def runtime_chat_stream(req: current.AioffTutorChatRequest, request: Request):
 5. 학생 답이 애매하면 학생이 이미 쓴 표현의 뜻을 한 번 더 풀어 달라고 묻는다.
 6. 학생 답이 자료와 명확히 어긋나면 정답을 떠먹이지 말고 어떤 부분을 다시 확인해야 하는지 사고 절차만 안내한다.
 7. 같은 질문을 말만 바꿔 반복하지 않는다.
-8. 답변은 학생 수준에 맞춰 짧고 자연스럽게 쓴다.
+8. 답변은 짧고 자연스럽게 쓴다.
 
 verdict는 pass, clarify, retry 중 하나로 판단하고 response에는 학생에게 보여줄 말만 쓴다.'''
     try:
@@ -492,7 +486,7 @@ verdict는 pass, clarify, retry 중 하나로 판단하고 response에는 학생
 
 
 # ---------------------------------------------------------------------------
-# Final UI patch: greeting + remove loose ON + news cards/thumbnails.
+# Final UI patch: news cards/thumbnails.
 # ---------------------------------------------------------------------------
 def _render_runtime_index() -> str:
     page = current._render_index_aioff_ui()
@@ -506,11 +500,7 @@ def _render_runtime_index() -> str:
 
     patch = r'''
 <style>
-.aioff-auth-dock.aioff-auth-global{flex-direction:row!important;align-items:center!important;gap:8px!important}
-.aioff-auth-greeting{font-size:10px;font-weight:750;color:#4c4742;white-space:nowrap}
-.aioff-auth-dock.aioff-auth-global .aioff-auth-links{display:inline-flex!important;align-items:center!important;gap:6px!important}
-.aioff-auth-dock.aioff-auth-global .aioff-auth-links>span{display:none!important}
-.aioff-auth-dock.aioff-auth-global .aioff-auth-links button{border:1px solid #d8d0c6!important;background:#fffaf3!important;border-radius:7px!important;padding:7px 10px!important;font-size:9px!important;text-decoration:none!important}
+.mode-label,.paper-head .mode-label,[data-mode-label]{display:none!important}
 .aioff-news-preview{width:100%;height:230px;overflow:hidden;background:#e9edf2;position:relative}
 .aioff-news-preview img{display:block;width:100%;height:100%;object-fit:cover}
 .aioff-news-preview:after{content:"최신 뉴스";position:absolute;left:10px;bottom:9px;padding:4px 7px;border-radius:6px;background:rgba(0,0,0,.68);color:#fff;font-size:9px;font-weight:850}
@@ -522,30 +512,14 @@ def _render_runtime_index() -> str:
 .aioff-news-reading h4{margin:0 0 11px;font-size:14px}.aioff-news-reading p{margin:0 0 12px;font-size:12px;line-height:1.75;color:var(--body)}
 .aioff-news-related{padding:13px 20px;background:#f8f5ef;border-top:1px solid var(--line)}
 .aioff-news-related small{display:block;font-size:9px;font-weight:850;color:var(--muted);margin-bottom:7px}.aioff-news-related div{font-size:10px;line-height:1.55;margin:4px 0}
-@media(max-width:900px){.aioff-news-preview{height:170px}.aioff-news-hero{height:300px}.aioff-auth-greeting{display:none}}
+@media(max-width:900px){.aioff-news-preview{height:170px}.aioff-news-hero{height:300px}}
 </style>
 <script>
 (() => {
-  const nativeFetchRuntime=window.fetch.bind(window);
-
   function hideLooseOn(){
     document.querySelectorAll('body *').forEach(el=>{
-      if(el.children.length===0 && (el.textContent||'').trim()==='ON' && !el.closest('.aioff-auth-dock')) el.style.display='none';
+      if(el.children.length===0 && ((el.textContent||'').trim()==='ON'||(el.textContent||'').trim()==='AI ON')) el.style.display='none';
     });
-  }
-
-  async function refreshGreeting(){
-    try{
-      const r=await nativeFetchRuntime('/api/auth/me',{credentials:'same-origin'});if(!r.ok)return;
-      const data=await r.json();const dock=document.querySelector('.aioff-auth-dock');if(!dock)return;
-      let greeting=dock.querySelector('.aioff-auth-greeting');
-      if(!data.logged_in||!data.user){if(greeting)greeting.remove();return}
-      if(!greeting){greeting=document.createElement('span');greeting.className='aioff-auth-greeting';dock.insertBefore(greeting,dock.querySelector('.aioff-auth-state')||dock.firstChild)}
-      const school=String(data.user.school_name||'').trim();const name=String(data.user.name||'').trim();
-      greeting.textContent=`${school}${school?' ':''}${name}님 어서오세요.`;
-      const state=dock.querySelector('.aioff-auth-state');if(state)state.textContent='LOGIN ON';
-      const links=dock.querySelector('.aioff-auth-links');if(links){links.querySelectorAll(':scope > span').forEach(x=>x.remove())}
-    }catch(e){}
   }
 
   const previewBeforeRuntime=window.fixedPreview;
@@ -570,10 +544,8 @@ def _render_runtime_index() -> str:
     window.caseMedia=function(c){if(String(c?.id||'').startsWith('news_'))return newsCard(c);return caseMediaBeforeRuntime(c)};
   }
 
-  function scanRuntime(){hideLooseOn();refreshGreeting()}
-  scanRuntime();
-  setInterval(scanRuntime,1400);
-  new MutationObserver(()=>{hideLooseOn()}).observe(document.body,{childList:true,subtree:true});
+  hideLooseOn();
+  new MutationObserver(hideLooseOn).observe(document.body,{childList:true,subtree:true,characterData:true});
 })();
 </script>
 '''
