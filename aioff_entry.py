@@ -38,13 +38,26 @@ def _render_entry_index() -> str:
     return page.replace('</body>', patch + '\n</body>')
 
 
-@app.get('/aioff-thumbnail.jpg')
-def aioff_thumbnail_jpg():
+def _thumbnail_response():
     return FileResponse(
         path=_THUMBNAIL_PATH,
         media_type='image/jpeg',
-        headers={'Cache-Control': 'public, max-age=86400'},
+        headers={
+            'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+        },
     )
+
+
+@app.get('/aioff-thumbnail.jpg')
+def aioff_thumbnail_jpg():
+    return _thumbnail_response()
+
+
+@app.get('/aioff-thumbnail-v2.jpg')
+def aioff_thumbnail_v2_jpg():
+    return _thumbnail_response()
 
 
 base._remove_route('/', 'GET')
