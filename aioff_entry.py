@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 import news_learning as current
 
@@ -8,6 +8,16 @@ app = current.app
 base = current.base
 
 _RENDER_BEFORE_ENTRY = current.runtime._render_runtime_index
+_GUEST_USER = {
+    "id": 0,
+    "email": "",
+    "name": "",
+    "school_level": "",
+    "school_region": "",
+    "school_name": "",
+    "school_code": "",
+    "grade": 0,
+}
 
 
 def _render_entry_index() -> str:
@@ -213,6 +223,13 @@ def _render_entry_index() -> str:
   color:#4c4742!important;
   white-space:nowrap!important;
 }
+
+/* Authentication is temporarily disabled. Keep the learning UI available in guest mode. */
+.aioff-auth-dock,
+#aioff-auth-overlay,
+#aioff-login-required{
+  display:none!important;
+}
 </style>
 <script>
 (() => {
@@ -247,6 +264,38 @@ def _render_entry_index() -> str:
 </script>
 '''
     return page.replace('</body>', patch + '\n</body>')
+
+
+# Temporarily disable account creation/login at the API boundary as well.
+for _path, _method in (
+    ('/api/auth/me', 'GET'),
+    ('/api/auth/login', 'POST'),
+    ('/api/auth/register', 'POST'),
+):
+    base._remove_route(_path, _method)
+
+
+@app.get('/api/auth/me')
+def aioff_auth_disabled_me():
+    # The legacy front-end uses a truthy user only to unlock the learning cards.
+    # This is not an authenticated account and no auth session is created.
+    return {"logged_in": False, "user": _GUEST_USER, "auth_enabled": False}
+
+
+@app.post('/api/auth/login')
+def aioff_auth_disabled_login():
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "현재 로그인 기능은 비활성화되어 있습니다."},
+    )
+
+
+@app.post('/api/auth/register')
+def aioff_auth_disabled_register():
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "현재 회원가입 기능은 비활성화되어 있습니다."},
+    )
 
 
 base._remove_route('/', 'GET')
