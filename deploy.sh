@@ -25,7 +25,6 @@ if [ -n "$KOBACO_ARCHIVE" ]; then
 from pathlib import Path
 import sys
 import zipfile
-
 archive = Path(sys.argv[1])
 out_dir = Path(sys.argv[2])
 out_dir.mkdir(parents=True, exist_ok=True)
@@ -51,11 +50,10 @@ fi
 
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
-  aioff_entry.py news_learning.py aioff_runtime.py aioff_ui.py \
-  literacy_kobaco_app_21.py literacy_kobaco_app_20.py literacy_kobaco_app_19.py \
-  literacy_kobaco_app_18.py literacy_kobaco_app_17.py auth_proto.py education_db.py \
-  kobaco_db.py education_archive_parser.py download_education_sources.py \
-  extract_education_sources.py embed_education_db.py
+  app.py literacy_app.py aioff_ui.py aioff_runtime.py news_learning.py aioff_entry.py \
+  auth_proto.py education_db.py kobaco_db.py news_db.py \
+  education_archive_parser.py download_education_sources.py extract_education_sources.py \
+  embed_education_db.py build_news_db.py link_news_education.py
 
 .venv/bin/python - <<'PY'
 import education_archive_parser
@@ -70,24 +68,28 @@ assert download_education_sources.DETAIL_URL
 expected = {
     'news': 'kobaco_aisac_',
     'deepfake': 'education_',
-    'ai': 'kobaco_ott_',
 }
 for lesson_id, prefix in expected.items():
-    cases = m.flow.CASE_LIBRARY.get(lesson_id, [])
-    ids = [str(c.get('id', '')) for c in cases]
+    ids = [str(c.get('id', '')) for c in m.flow.CASE_LIBRARY.get(lesson_id, [])]
     if len(ids) < 3:
         raise SystemExit(f"ERROR: {lesson_id} has fewer than 3 cases")
     if not all(x.startswith(prefix) for x in ids):
         raise SystemExit(f"ERROR: {lesson_id} contains unexpected case ids")
     print(f"{lesson_id}: {len(ids)} cases")
 
-page = m._render_index_aioff_ui()
+# aioff_runtime replaces the third topic with current news cases at import time.
+import aioff_runtime as runtime
+news_ids = [str(c.get('id', '')) for c in runtime.flow.CASE_LIBRARY.get('ai', [])]
+if len(news_ids) < 3 or not all(x.startswith('news_') for x in news_ids):
+    raise SystemExit('ERROR: latest-news cases are not loaded')
+print(f"ai: {len(news_ids)} news cases")
+
+page = runtime._render_runtime_index()
 for marker in (
     'AI가 읽은 광고',
     '리터러시 교육 안내서',
-    '청소년·OTT 통계',
+    '최신 뉴스에서 사실과 해석 구분하기',
     'LOGIN OFF',
-    'education_',
     'aioff-learning-columns',
     'aioff-composer-side',
 ):
@@ -96,7 +98,7 @@ for marker in (
 if '<section class="process" aria-label="이용 순서">' in page:
     raise SystemExit('ERROR: progress rail still rendered')
 if '<aside class="study-side">' in page:
-    raise SystemExit('ERROR: right study sidebar still rendered')
+    raise SystemExit('ERROR: old right study sidebar still rendered')
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
 for path in (
@@ -105,8 +107,10 @@ for path in (
     '/api/auth/register',
     '/api/auth/logout',
     '/api/auth/schools',
+    '/api/case-start',
+    '/api/aioff-education-cases',
     '/api/education-learning/{case_id}',
-    '/api/education-activity-pdf/{case_id}',
+    '/api/education-file/{case_id}',
     '/api/chat-stream',
     '/api/analyze',
     '/api/off-test',
@@ -115,7 +119,7 @@ for path in (
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
 
-print('ENTRY + UI IMPORT + ROUTE + LAYOUT CHECK OK')
+print('FLATTENED ENTRY + ROUTE + LAYOUT CHECK OK')
 PY
 
 echo "[5/6] Install/restart service"
