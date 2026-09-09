@@ -8,12 +8,11 @@ AI와 학습한 뒤 학생이 AI에 맡긴 사고와 정보 판단을 다시 직
 
 주요 기능:
 - KOBACO AiSAC 실제 광고 데이터 기반 미디어 리터러시 학습
-- 공식 리터러시 교육 안내서 기반 학교급·학년 맞춤 학습
+- 공식 리터러시 교육 안내서 전체 자료 기반 랜덤 학습
 - 최신 뉴스 기반 사실·해석 구분 학습
-- 로그인/회원가입 및 NEIS 학교 검색·학교급·학년 프로필
 - Gemini 학습 채팅 + Groq fallback
 - AI OFF 대화 분석, 문제 생성, 답변 평가·재도전
-- SQLite 세션·회원·교육자료 데이터, DuckDB/Parquet KOBACO 데이터
+- SQLite 세션·학습 이력·교육자료 데이터, DuckDB/Parquet KOBACO 데이터
 
 현재 실행 체인은 `aioff_entry.py → news_learning.py → aioff_runtime.py → aioff_ui.py → literacy_app.py → app.py`로 정리되어 있으며, 과거 번호형 `literacy_kobaco_app_*`, `literacy_media_app_*`, `literacy_cases_*` 모듈은 사용하지 않습니다.
 
