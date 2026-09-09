@@ -12,10 +12,13 @@ base = current.base
 
 _RENDER_BEFORE_ENTRY = current.runtime._render_runtime_index
 _ASSET_DIR = Path(__file__).resolve().parent / "assets"
-_THUMBNAIL_JPEG = base64.b64decode(
-    (_ASSET_DIR / "aioff-thumbnail.b64").read_text(encoding="ascii").strip(),
-    validate=True,
+_THUMBNAIL_B64 = "".join(
+    (_ASSET_DIR / f"aioff-thumb-{index}.b64").read_text(encoding="ascii").strip()
+    for index in range(1, 5)
 )
+_THUMBNAIL_JPEG = base64.b64decode(_THUMBNAIL_B64, validate=True)
+if len(_THUMBNAIL_JPEG) != 13020 or not _THUMBNAIL_JPEG.startswith(b"\xff\xd8"):
+    raise RuntimeError("Invalid AI OFF thumbnail asset")
 
 
 def _render_entry_index() -> str:
