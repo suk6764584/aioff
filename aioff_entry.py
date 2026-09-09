@@ -14,7 +14,19 @@ def _render_entry_index() -> str:
     page = _RENDER_BEFORE_ENTRY()
     patch = r'''
 <style>
-/* Final auth header override only. Learning layout is untouched. */
+/* Final auth header override + full-width guard for the active learning layout. */
+.workspace{
+  display:block!important;
+  grid-template-columns:none!important;
+  gap:0!important;
+  align-items:stretch!important;
+}
+.study-paper,
+.aioff-learning-columns{
+  width:100%!important;
+  max-width:none!important;
+}
+
 .aioff-auth-dock.aioff-auth-global{
   position:fixed!important;
   top:18px!important;
