@@ -11,6 +11,11 @@ base = current.base
 
 _RENDER_BEFORE_ENTRY = current.runtime._render_runtime_index
 _THUMBNAIL_PATH = Path(__file__).resolve().parent / "assets" / "aioff-thumbnail.jpg"
+if not _THUMBNAIL_PATH.is_file():
+    raise RuntimeError(f"Missing AI OFF thumbnail asset: {_THUMBNAIL_PATH}")
+with _THUMBNAIL_PATH.open("rb") as _thumbnail_file:
+    if _thumbnail_file.read(2) != b"\xff\xd8":
+        raise RuntimeError("Invalid AI OFF thumbnail JPEG asset")
 
 
 def _render_entry_index() -> str:
