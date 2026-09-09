@@ -51,7 +51,7 @@ fi
 echo "[4/6] Validate current application"
 .venv/bin/python -m py_compile \
   app.py literacy_app.py aioff_ui.py aioff_runtime.py news_learning.py aioff_entry.py \
-  auth_proto.py education_db.py kobaco_db.py news_db.py \
+  education_db.py kobaco_db.py news_db.py \
   education_archive_parser.py download_education_sources.py extract_education_sources.py \
   embed_education_db.py build_news_db.py link_news_education.py
 
@@ -89,7 +89,6 @@ for marker in (
     'AI가 읽은 광고',
     '리터러시 교육 안내서',
     '최신 뉴스에서 사실과 해석 구분하기',
-    'LOGIN OFF',
     'aioff-learning-columns',
     'aioff-composer-side',
 ):
@@ -102,11 +101,6 @@ if '<aside class="study-side">' in page:
 
 route_paths = {getattr(route, 'path', '') for route in m.app.routes}
 for path in (
-    '/api/auth/me',
-    '/api/auth/login',
-    '/api/auth/register',
-    '/api/auth/logout',
-    '/api/auth/schools',
     '/api/case-start',
     '/api/aioff-education-cases',
     '/api/education-learning/{case_id}',
@@ -118,6 +112,16 @@ for path in (
 ):
     if path not in route_paths:
         raise SystemExit(f"ERROR: route missing: {path}")
+
+for path in (
+    '/api/auth/me',
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/logout',
+    '/api/auth/schools',
+):
+    if path in route_paths:
+        raise SystemExit(f"ERROR: removed auth route still exists: {path}")
 
 print('FLATTENED ENTRY + ROUTE + LAYOUT CHECK OK')
 PY
@@ -145,8 +149,6 @@ if [ "$ok" -ne 1 ]; then
 fi
 
 cat /tmp/aioff_health.json
-echo
-curl -fsS --max-time 5 http://127.0.0.1:3000/api/auth/me
 echo
 
 if ! grep -q 'aioff_entry:app' /etc/systemd/system/aioff.service; then
