@@ -217,29 +217,17 @@ def _fetch_news_meta(case: dict) -> dict:
     return dict(result)
 
 
-def _news_reading_limits(user: dict | None) -> tuple[int, int, str]:
-    level = str((user or {}).get("school_level") or "")
-    grade = int((user or {}).get("grade") or 0)
-    if level == "초" and grade <= 3:
-        return 4, 5, "짧은 문장과 쉬운 말로 설명하되 사건의 핵심 인물·기관·숫자는 빼지 않는다."
-    if level == "초":
-        return 5, 6, "어려운 용어는 쉬운 말로 풀되 중요한 고유명사·수치·핵심 용어는 그대로 남긴다."
-    if level == "중":
-        return 5, 7, "사건의 경과, 근거, 쟁점, 대응, 아직 확인할 부분을 나누어 충분히 설명한다."
-    if level == "고":
-        return 6, 8, "사실관계와 쟁점, 법·정책·기술 용어, 이해관계자의 주장과 불확실성을 충분히 보존한다."
+def _news_reading_limits() -> tuple[int, int, str]:
     return 5, 7, "원문을 따로 열지 않아도 사건의 핵심 사실과 쟁점을 이해할 정도로 충분히 설명한다."
 
 
-def _news_study_pack(case: dict, user: dict | None) -> dict:
-    level = str((user or {}).get("school_level") or "")
-    grade = int((user or {}).get("grade") or 0)
-    key = (str(case.get("id") or ""), level, grade)
+def _news_study_pack(case: dict) -> dict:
+    key = str(case.get("id") or "")
     if key in runtime._NEWS_PACK_CACHE:
         return dict(runtime._NEWS_PACK_CACHE[key])
 
-    profile, rules, _ = runtime._news_profile(user)
-    min_paragraphs, max_paragraphs, paragraph_rule = _news_reading_limits(user)
+    profile, rules, _ = runtime._news_profile()
+    min_paragraphs, max_paragraphs, paragraph_rule = _news_reading_limits()
     meta = _fetch_news_meta(case)
     description = runtime._clean_text(meta.get("description") or "")
     body = runtime._clean_text(meta.get("body") or "")
@@ -262,8 +250,8 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
     ) or "- 동일 사건 다른 기사 메타데이터 없음"
 
     if len(source_text) >= 240:
-        prompt = f'''다음 실제 뉴스 기사를 {profile} 학생이 읽는 미디어 리터러시 학습자료로 재구성하라.
-수준 규칙: {rules}
+        prompt = f'''다음 실제 뉴스 기사를 {profile}이 읽는 미디어 리터러시 학습자료로 재구성하라.
+표현 규칙: {rules}
 
 기사 제목: {case.get('title','')}
 언론사: {case.get('source_name','')}
@@ -285,7 +273,7 @@ def _news_study_pack(case: dict, user: dict | None) -> dict:
 7. 원문 문장을 길게 그대로 복사하지 말고 학생용 문장으로 재구성한다. 중요한 사실을 줄이기 위해 핵심 단어와 수치를 버리지 않는다.
 8. 동일 사건 다른 보도 제목은 비교 관점을 잡는 데만 사용하고 그 제목만으로 새로운 사실을 만들지 않는다.
 9. questions는 정확히 3개. 모든 질문은 화면에 표시될 reading만 읽어도 답할 수 있어야 한다.
-10. 질문은 단순 암기보다 사실/해석 구분, 근거 판단, 표현의 불확실성, 기사 비교 중 학생 수준에 맞는 사고를 한 가지씩 묻는다. 한 질문에 여러 요구를 몰아넣지 않는다.
+10. 질문은 단순 암기보다 사실/해석 구분, 근거 판단, 표현의 불확실성, 기사 비교 중 사고를 한 가지씩 묻는다. 한 질문에 여러 요구를 몰아넣지 않는다.
 11. 기사 원문에만 있고 reading에서 빠진 세부 정보를 학생이 알아야 풀 수 있는 질문은 금지한다.
 
 JSON 스키마에 맞춰 반환하라.'''
@@ -380,17 +368,7 @@ _PREVIOUS_NEWS_CHAT_STREAM = runtime.runtime_chat_stream
 base._remove_route("/api/chat-stream", "POST")
 
 
-def _feedback_length_rule(user: dict | None) -> str:
-    level = str((user or {}).get("school_level") or "")
-    grade = int((user or {}).get("grade") or 0)
-    if level == "초" and grade <= 3:
-        return "3~4문장. 쉬운 말로 판단 이유를 한 가지씩 설명한다."
-    if level == "초":
-        return "4~5문장. 학생 답을 해석하고 기사 근거와 연결해 설명한다."
-    if level == "중":
-        return "5~7문장. 학생 답의 의미, 기사 근거, 사실과 해석의 차이를 충분히 설명한다."
-    if level == "고":
-        return "6~8문장. 근거의 범위, 불확실성, 다른 해석 가능성까지 필요하면 설명한다."
+def _feedback_length_rule() -> str:
     return "4~6문장. 판단 근거와 미디어 리터러시 포인트를 충분히 설명한다."
 
 
@@ -404,9 +382,8 @@ def detailed_news_chat_stream(req: current.AioffTutorChatRequest, request: _Requ
         return _PREVIOUS_NEWS_CHAT_STREAM(req, request)
 
     case = found[1]
-    user = runtime.auth.current_user(request.cookies.get(runtime.auth.COOKIE_NAME))
-    pack = runtime._news_study_pack(case, user)
-    profile, _, _ = runtime._news_profile(user)
+    pack = runtime._news_study_pack(case)
+    profile, _, _ = runtime._news_profile()
     reading_items = [str(x).strip() for x in pack.get("reading", []) if str(x).strip()]
     questions = [str(x).strip() for x in pack.get("questions", []) if str(x).strip()]
     reading = "\n".join(f"- {x}" for x in reading_items)
@@ -421,9 +398,9 @@ def detailed_news_chat_stream(req: current.AioffTutorChatRequest, request: _Requ
     if not current_question and questions:
         current_question = questions[0]
 
-    length_rule = _feedback_length_rule(user)
+    length_rule = _feedback_length_rule()
     prompt = f'''너는 실제 뉴스를 이용한 디지털 리터러시 튜터다.
-학생 수준: {profile}
+대상: {profile}
 설명 분량: {length_rule}
 
 [기사]
@@ -497,166 +474,3 @@ response에는 학생에게 보여줄 자연스러운 설명만 작성하고 ver
             "X-Accel-Buffering": "no",
         },
     )
-
-
-# ---------------------------------------------------------------------------
-# 로그인 영역 아래에 남던 구형 'ON' 라벨 제거.
-# ---------------------------------------------------------------------------
-_RENDER_BEFORE_FINAL_FIX = runtime._render_runtime_index
-
-
-def _render_final_fix() -> str:
-    page = _RENDER_BEFORE_FINAL_FIX()
-    patch = r'''
-<style>
-.aioff-auth-dock .mode-label{display:none!important}
-</style>
-<script>
-(() => {
-  function removeStandaloneOn(){
-    document.querySelectorAll('body *').forEach(el=>{
-      if(el.children.length===0 && (el.textContent||'').trim()==='ON' && !el.classList.contains('aioff-auth-state')){
-        el.remove();
-      }
-    });
-  }
-  removeStandaloneOn();
-  new MutationObserver(removeStandaloneOn).observe(document.body,{childList:true,subtree:true,characterData:true});
-})();
-</script>
-'''
-    return page.replace("</body>", patch + "\n</body>")
-
-
-runtime._render_runtime_index = _render_final_fix
-
-
-# ---------------------------------------------------------------------------
-# Auth UI stabilization: keep only the real LOGIN ON/OFF control.
-# ---------------------------------------------------------------------------
-_RENDER_BEFORE_AUTH_STABLE = runtime._render_runtime_index
-
-
-def _render_auth_stable() -> str:
-    page = _RENDER_BEFORE_AUTH_STABLE()
-    patch = r'''
-<style>
-/* Legacy AI mode labels are no longer part of the header. */
-.mode-label,
-.paper-head .mode-label,
-[data-mode-label]{display:none!important}
-
-/* Keep the auth dock compact in both logged-in and logged-out states. */
-.aioff-auth-dock.aioff-auth-global{
-  position:fixed!important;
-  top:18px!important;
-  right:22px!important;
-  z-index:10020!important;
-  display:inline-flex!important;
-  flex-direction:row!important;
-  align-items:center!important;
-  justify-content:flex-end!important;
-  gap:8px!important;
-  width:auto!important;
-  height:auto!important;
-  min-width:0!important;
-  min-height:0!important;
-  padding:0!important;
-  margin:0!important;
-  overflow:visible!important;
-  background:transparent!important;
-  border:0!important;
-  border-radius:0!important;
-  box-shadow:none!important;
-}
-.aioff-auth-dock:not(.is-on) .aioff-auth-links{
-  display:none!important;
-}
-.aioff-auth-dock.is-on .aioff-auth-links{
-  position:static!important;
-  display:inline-flex!important;
-  flex-direction:row!important;
-  align-items:center!important;
-  justify-content:flex-end!important;
-  gap:6px!important;
-  width:auto!important;
-  height:auto!important;
-  min-width:0!important;
-  min-height:0!important;
-  padding:0!important;
-  margin:0!important;
-  overflow:visible!important;
-  background:transparent!important;
-  border:0!important;
-  border-radius:0!important;
-  box-shadow:none!important;
-}
-.aioff-auth-dock.is-on .aioff-auth-links>span{display:none!important}
-.aioff-auth-dock.is-on .aioff-auth-links button{
-  width:auto!important;
-  min-width:0!important;
-  height:30px!important;
-  min-height:30px!important;
-  margin:0!important;
-  padding:0 11px!important;
-  border:1px solid #cfc7bc!important;
-  border-radius:7px!important;
-  background:#f7f3ed!important;
-  color:#514b45!important;
-  font-size:10px!important;
-  line-height:1!important;
-  font-weight:800!important;
-  box-shadow:none!important;
-}
-</style>
-<script>
-(() => {
-  function isAuthStateNode(node){
-    const el=node && (node.nodeType===Node.ELEMENT_NODE ? node : node.parentElement);
-    return !!el?.closest?.('.aioff-auth-state');
-  }
-
-  function removeLegacyModeText(){
-    document.querySelectorAll('.mode-label,[data-mode-label]').forEach(el=>el.remove());
-
-    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-    const textNodes=[];
-    while(walker.nextNode()) textNodes.push(walker.currentNode);
-    textNodes.forEach(node=>{
-      const text=(node.nodeValue||'').trim().replace(/\s+/g,' ');
-      if((text==='ON'||text==='AI ON') && !isAuthStateNode(node)) node.remove();
-    });
-
-    document.querySelectorAll('body *').forEach(el=>{
-      const text=(el.textContent||'').trim().replace(/\s+/g,' ');
-      if((text==='ON'||text==='AI ON') && !el.closest('.aioff-auth-state')) el.remove();
-    });
-  }
-
-  function normalizeAuthDock(){
-    const dock=document.querySelector('.aioff-auth-dock');
-    if(!dock) return;
-    dock.querySelectorAll('.mode-label,[data-mode-label]').forEach(el=>el.remove());
-    [...dock.childNodes].forEach(node=>{
-      if(node.nodeType!==Node.TEXT_NODE) return;
-      const text=(node.nodeValue||'').trim().replace(/\s+/g,' ');
-      if(text==='ON'||text==='AI ON') node.remove();
-    });
-  }
-
-  function clean(){removeLegacyModeText();normalizeAuthDock()}
-  clean();
-  new MutationObserver(clean).observe(document.body,{
-    childList:true,
-    subtree:true,
-    characterData:true,
-    attributes:true,
-    attributeFilter:['class']
-  });
-})();
-</script>
-'''
-    return page.replace("</body>", patch + "\n</body>")
-
-
-runtime._render_runtime_index = _render_auth_stable
