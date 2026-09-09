@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import base64
 import html
 import json
 import mimetypes
-import os
 import posixpath
+import random
 import re
-import secrets
 import sqlite3
-import time
 import zipfile
 from datetime import date
 from io import BytesIO
@@ -20,13 +17,11 @@ from urllib.parse import quote, urljoin
 from urllib.request import Request as URLRequest, urlopen
 from xml.etree import ElementTree as ET
 
-import requests
 from fastapi import HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader, PdfWriter
 
-import auth_proto as auth
 import literacy_app as base
 from kobaco_db import get_kobaco_db, kobaco_status
 
@@ -58,11 +53,11 @@ base.LESSONS.update({
     },
     "deepfake": {
         "title": "리터러시 교육 안내서",
-        "short": "초·중·고 디지털윤리 교육 안내서의 개념과 활동을 읽고 직접 적용합니다.",
+        "short": "수집된 디지털윤리 교육 안내서의 개념과 활동을 무작위 사례로 읽고 직접 적용합니다.",
         "source_name": "디지털윤리 교육자료실",
         "source_url": ARCHIVE_URL,
         "source_role": "공식 디지털윤리 교육자료",
-        "source_note": "초·중·고 대상 디지털윤리 교육 안내서와 활동 자료를 수집해 학습 자료로 사용합니다.",
+        "source_note": "수집된 디지털윤리 교육 안내서와 활동 자료 전체를 학습 자료로 사용합니다.",
         "criteria": [
             "자료에 적힌 개념과 활동 지시를 먼저 확인한다.",
             "사실·해석·의견을 구분해 자신의 말로 설명한다.",
@@ -492,58 +487,23 @@ def education_visual(case_id: str):
     if not visual: raise HTTPException(404,"표시할 시각 학습자료가 없습니다.")
     return FileResponse(visual["path"],media_type="application/pdf",headers={"Content-Disposition":"inline"})
 
-_TEACHER_TITLE_TERMS=("교사용","지도서","강사용","수업지도","지도안","교수학습"); _ADULT_TARGET_TERMS=("교사","교직원","학부모","보호자","성인","대학생")
+def _learning_level_rules() -> tuple[str,int]:
+    return "학생이 이해할 수 있는 자연스러운 표현을 사용하고 자료의 사실·근거·판단 기준을 자신의 말로 설명하게 한다.",3
 
-def _education_profile_score(case: dict[str,Any],user: dict[str,Any]|None) -> int|None:
-    title=str(case.get("title") or "")
-    if any(term in title for term in _TEACHER_TITLE_TERMS): return None
-    if not user: return 1
-    level=str(user.get("school_level") or ""); grade=int(user.get("grade") or 0); raw=str(case.get("education_target") or ""); target=re.sub(r"[\s·ㆍ,/()\-]","",raw)
-    if any(term in target for term in _ADULT_TARGET_TERMS): return None
-    elementary=any(term in target for term in ("초등","초등학생","초등학교")); middle=any(term in target for term in ("중등","중학생","중학교","중고등","중고생")); high=any(term in target for term in ("고등","고등학생","고등학교","중고등","중고생")); youth=any(term in target for term in ("청소년","학생"))
-    if level=="초":
-        if not elementary or middle or high: return None
-        score=8; text=f"{raw} {title}"
-        if grade<=3 and any(x in text for x in ("저학년","1~3","1-3","1·2·3")): score+=4
-        elif grade>=4 and any(x in text for x in ("고학년","4~6","4-6","4·5·6")): score+=4
-        return score
-    if level=="중":
-        if middle: return 9 if not high else 8
-        if youth and not elementary: return 5
-        return None
-    if level=="고":
-        if high: return 9 if not middle else 8
-        if youth and not elementary: return 5
-        return None
-    return 1
-
-def _learning_level_rules(user: dict[str,Any]|None) -> tuple[str,int]:
-    level=str((user or {}).get("school_level") or ""); grade=int((user or {}).get("grade") or 0)
-    if level=="초" and grade<=3: return "초등 1~3학년 수준. 짧고 구체적인 말로 설명하고 생활 속 행동이나 눈에 보이는 상황을 중심으로 묻는다.",2
-    if level=="초": return "초등 4~6학년 수준. 쉬운 말로 사실과 의견, 원인과 결과를 구분하고 자료 근거를 하나 찾게 한다.",3
-    if level=="중": return "중학생 수준. 원인·결과, 사실·해석, 출처와 근거를 연결하고 비교하거나 이유를 설명하게 한다.",3
-    if level=="고": return "고등학생 수준. 근거의 신뢰성, 주장과 전제, 대안적 해석, 상관과 인과 같은 판단 요소를 다룬다.",3
-    return "학생 수준에 맞는 쉬운 표현을 사용하고 자료 근거를 바탕으로 생각하게 한다.",3
-
-def _reading_plan(user: dict[str,Any]|None) -> tuple[int,int,str]:
-    level=str((user or {}).get("school_level") or ""); grade=int((user or {}).get("grade") or 0)
-    if level=="초" and grade<=3: return 3,4,"각 문단은 1~2개의 짧은 문장으로 쓴다."
-    if level=="초": return 4,5,"각 문단은 2~3문장으로 쓰고 어려운 용어는 쉬운 말로 풀어쓴다."
-    if level=="중": return 5,6,"배경, 핵심 개념, 원인·영향, 판단 기준을 필요한 만큼 나누어 설명한다."
-    if level=="고": return 5,7,"핵심 개념뿐 아니라 근거, 한계, 위험, 적용 맥락까지 원문 범위에서 충분히 설명한다."
+def _reading_plan() -> tuple[int,int,str]:
     return 4,6,"학생이 원문을 따로 열지 않아도 학습할 수 있을 만큼 충분히 설명한다."
 
 def _fallback_questions(count: int,reading: list[str]) -> list[str]:
     bank=["읽어보기에서 가장 중요하다고 생각한 내용을 하나 골라 자신의 말로 설명해보세요.","읽어보기에서 그 판단을 뒷받침하는 근거를 하나 찾아 설명해보세요.","읽어보기의 내용을 실제 디지털 생활에 적용한다면 무엇을 조심하거나 확인해야 할지 적어보세요."]
     return bank[:max(1,count)] if reading else ["읽어보기에서 확인한 내용을 자신의 말로 한 문장으로 정리해보세요."]
 
-def _make_adaptive_study_pack(case: dict[str,Any],source: dict[str,Any],user: dict[str,Any]|None,visual: dict[str,Any]|None) -> dict[str,Any]:
-    material_id=int(source.get("material_id") or 0); level=str((user or {}).get("school_level") or case.get("education_target") or ""); grade=int((user or {}).get("grade") or 0); key=(material_id,level,grade)
+def _make_adaptive_study_pack(case: dict[str,Any],source: dict[str,Any],visual: dict[str,Any]|None) -> dict[str,Any]:
+    material_id=int(source.get("material_id") or 0); key=material_id
     if key in _ADAPTIVE_PACK_CACHE: return dict(_ADAPTIVE_PACK_CACHE[key])
-    level_rules,question_count=_learning_level_rules(user); min_p,max_p,paragraph_rule=_reading_plan(user); profile=f"{level} {grade}학년" if grade else (level or "학생"); expanded=_expanded_education_context(source); original_questions="\n".join(f"- {q}" for q in source.get("prompts",[])) or "- 없음"
+    level_rules,question_count=_learning_level_rules(); min_p,max_p,paragraph_rule=_reading_plan(); profile="학생"; expanded=_expanded_education_context(source); original_questions="\n".join(f"- {q}" for q in source.get("prompts",[])) or "- 없음"
     reading_prompt=f'''다음 공식 디지털 리터러시 교육자료를 학생이 실제로 읽을 학습 내용으로 재구성하라.
-학생: {profile}
-학년별 난이도 규칙: {level_rules}
+대상: {profile}
+표현 규칙: {level_rules}
 자료명: {case.get('title','')}
 원문 파일: {source.get('source_name','')}
 
@@ -558,7 +518,7 @@ def _make_adaptive_study_pack(case: dict[str,Any],source: dict[str,Any],user: di
 2. 학생이 원문 PDF를 따로 열지 않아도 읽어보기만으로 뒤 질문을 풀 수 있을 만큼 필요한 배경과 개념을 충분히 제공한다.
 3. 과도하게 요약하지 말고 배경·특징·원인·영향·위험·주의점·사례·판단 기준 중 관련 내용을 보존한다.
 4. reading은 {min_p}~{max_p}개 문단. {paragraph_rule}
-5. 원문을 순서대로 복사하지 말고 학생 수준에 맞게 구조화한다.
+5. 원문을 순서대로 복사하지 말고 이해하기 쉽게 구조화한다.
 6. 페이지·차시·파일명·목차·교사용 지시·성취기준은 제외한다.
 7. 화면에 없는 그림·표를 본 것처럼 설명하지 않는다.
 8. activity_title은 실제 학습 주제를 쓴다.
@@ -570,8 +530,8 @@ JSON 스키마에 맞춰 반환하라.'''
     except Exception as exc:
         base.core.logger.warning("Education reading generation failed: %s",type(exc).__name__); raw=re.sub(r"\s+"," ",expanded).strip(); reading=[raw[:1800]] if raw else ["이 자료에서 확인할 수 있는 내용을 살펴보세요."]; title=str(case.get("title") or "").strip()
     visible="\n\n".join(f"{i+1}. {x}" for i,x in enumerate(reading)); question_prompt=f'''다음은 학생 화면에 실제로 표시될 읽어보기 내용이다. 이 내용만 읽은 학생이 답할 수 있는 질문을 만들어라.
-학생: {profile}
-학년별 난이도 규칙: {level_rules}
+대상: {profile}
+표현 규칙: {level_rules}
 학습 주제: {title or case.get('title','')}
 
 [학생 화면 읽어보기]
@@ -600,88 +560,14 @@ flow=SimpleNamespace(CASE_LIBRARY=CASE_LIBRARY,CASE_BY_ID=CASE_BY_ID,CaseStartRe
 def api_kobaco_status(): return KOBACO_STATUS
 
 @app.get("/api/aioff-education-cases")
-def aioff_education_cases(request: Request):
-    user=auth.current_user(request.cookies.get(auth.COOKIE_NAME)); ranked=[]
-    for case in CASE_LIBRARY.get("deepfake",[]):
-        if not str(case.get("id") or "").startswith("education_"): continue
-        score=_education_profile_score(case,user)
-        if score is not None: ranked.append((score,int(case.get("education_embedded_chunk_count") or 0),str(case.get("education_year") or ""),case))
-    ranked.sort(key=lambda x:(x[0],x[1],x[2]),reverse=True); return {"logged_in":bool(user),"count":len(ranked[:40]),"items":[flow._public_case(x[3]) for x in ranked[:40]]}
+def aioff_education_cases():
+    items=[flow._public_case(case) for case in CASE_LIBRARY.get("deepfake",[]) if str(case.get("id") or "").startswith("education_")]
+    random.shuffle(items)
+    return {"count":len(items),"items":items}
 
 @app.get("/api/education-learning/{case_id}")
-def aioff_education_learning(case_id: str,request: Request):
-    case=_education_case(case_id); source=_select_source(case); visual=_simple_visual(source); user=auth.current_user(request.cookies.get(auth.COOKIE_NAME)); return {"ok":True,"pack":_make_adaptive_study_pack(case,source,user,visual)}
-
-# Authentication
-
-def _ensure_login_id_column() -> None:
-    with auth._connect() as conn:
-        cols={str(row[1]) for row in conn.execute("PRAGMA table_info(users)").fetchall()}
-        if "login_id" not in cols: conn.execute("ALTER TABLE users ADD COLUMN login_id TEXT")
-        conn.execute("UPDATE users SET login_id=email WHERE login_id IS NULL OR TRIM(login_id)=''"); conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_login_id ON users(login_id)"); conn.commit()
-_ensure_login_id_column()
-
-class LoginRequest(BaseModel): login_id: str=Field(min_length=3,max_length=30); password: str=Field(min_length=1,max_length=100)
-class RegisterRequest(BaseModel):
-    login_id: str=Field(min_length=3,max_length=30); email: str=Field(min_length=3,max_length=200); password: str=Field(min_length=6,max_length=100); name: str=Field(min_length=1,max_length=30); phone: str=Field(min_length=8,max_length=30); school_level: str; school_region: str; school_name: str=Field(min_length=1,max_length=120); school_code: str=Field(default="",max_length=30); grade: int
-
-def _set_session_cookie(response: JSONResponse,token: str) -> None:
-    secure=os.getenv("AUTH_COOKIE_SECURE","1").strip().lower() not in {"0","false","no"}; response.set_cookie(auth.COOKIE_NAME,token,max_age=auth.SESSION_TTL_SECONDS,httponly=True,secure=secure,samesite="lax",path="/")
-
-for _path,_method in (("/api/auth/me","GET"),("/api/auth/login","POST"),("/api/auth/register","POST"),("/api/auth/logout","POST"),("/api/auth/schools","GET")): base._remove_route(_path,_method)
-
-@app.get("/api/auth/me")
-def auth_me(request: Request):
-    user=auth.current_user(request.cookies.get(auth.COOKIE_NAME)); return {"logged_in":bool(user),"user":user}
-
-@app.post("/api/auth/login")
-def auth_login(payload: LoginRequest):
-    login_id=(payload.login_id or "").strip().lower()
-    with auth._connect() as conn: row=conn.execute("SELECT * FROM users WHERE LOWER(login_id)=? OR LOWER(email)=? LIMIT 1",(login_id,login_id)).fetchone()
-    if not row: raise HTTPException(401,"아이디 또는 비밀번호를 확인해 주세요.")
-    try: expected=base64.b64decode(row["password_hash"]); salt=base64.b64decode(row["password_salt"])
-    except Exception: raise HTTPException(401,"아이디 또는 비밀번호를 확인해 주세요.")
-    if not auth.hmac.compare_digest(auth._hash_password(payload.password,salt),expected): raise HTTPException(401,"아이디 또는 비밀번호를 확인해 주세요.")
-    user=auth._public_user(row); token=auth.create_session(int(row["id"])); response=JSONResponse({"ok":True,"user":user}); _set_session_cookie(response,token); return response
-
-@app.post("/api/auth/register")
-def auth_register(payload: RegisterRequest):
-    login_id=(payload.login_id or "").strip().lower()
-    if not re.fullmatch(r"[^\s@]{3,30}",login_id): raise HTTPException(400,"아이디는 공백 없이 3~30자로 입력해 주세요.")
-    try: clean=auth.validate_registration(payload.model_dump())
-    except ValueError as exc: raise HTTPException(400,str(exc))
-    salt=secrets.token_bytes(16); digest=auth._hash_password(clean.pop("password"),salt); now=int(time.time())
-    try:
-        with auth._connect() as conn:
-            if conn.execute("SELECT 1 FROM users WHERE LOWER(login_id)=? LIMIT 1",(login_id,)).fetchone(): raise HTTPException(400,"이미 사용 중인 아이디입니다.")
-            cur=conn.execute("INSERT INTO users(login_id,email,password_hash,password_salt,name,phone,school_level,school_region,school_name,school_code,grade,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(login_id,clean["email"],base64.b64encode(digest).decode("ascii"),base64.b64encode(salt).decode("ascii"),clean["name"],clean["phone"],clean["school_level"],clean["school_region"],clean["school_name"],clean["school_code"],clean["grade"],now)); user_id=int(cur.lastrowid); row=conn.execute("SELECT * FROM users WHERE id=?",(user_id,)).fetchone(); conn.commit()
-    except HTTPException: raise
-    except sqlite3.IntegrityError: raise HTTPException(400,"이미 가입된 이메일이거나 사용 중인 아이디입니다.")
-    user=auth._public_user(row); token=auth.create_session(user_id); response=JSONResponse({"ok":True,"user":user}); _set_session_cookie(response,token); return response
-
-@app.post("/api/auth/logout")
-def auth_logout(request: Request):
-    token=request.cookies.get(auth.COOKIE_NAME); auth.delete_session(token); response=JSONResponse({"ok":True}); response.delete_cookie(auth.COOKIE_NAME,path="/"); return response
-
-@app.get("/api/auth/schools")
-def auth_school_search(region: str,school_level: str,q: str=""):
-    region=(region or "").strip(); school_level=(school_level or "").strip(); query=(q or "").strip()
-    if region not in auth.REGION_CODES: raise HTTPException(400,"지역을 선택해 주세요.")
-    if school_level not in auth.SCHOOL_LEVEL_NAMES: raise HTTPException(400,"학교급을 선택해 주세요.")
-    key=os.getenv("NEIS_API_KEY","").strip(); sample_mode=not bool(key); params={"Type":"json","pIndex":1,"pSize":5 if sample_mode else 50,"ATPT_OFCDC_SC_CODE":auth.REGION_CODES[region],"SCHUL_KND_SC_NM":auth.SCHOOL_LEVEL_NAMES[school_level]}
-    if query: params["SCHUL_NM"]=query
-    if key: params["KEY"]=key
-    try: response=requests.get("https://open.neis.go.kr/hub/schoolInfo",params=params,timeout=10); response.raise_for_status(); payload=response.json()
-    except Exception as exc: base.core.logger.warning("NEIS school search failed: %s",type(exc).__name__); raise HTTPException(502,"학교 검색 서버 연결에 실패했습니다.")
-    rows=[]
-    for block in payload.get("schoolInfo") or []:
-        if isinstance(block,dict) and isinstance(block.get("row"),list): rows.extend(block["row"])
-    items=[]; seen=set()
-    for row in rows:
-        code=str(row.get("SD_SCHUL_CODE") or "").strip(); name=str(row.get("SCHUL_NM") or "").strip(); address=str(row.get("ORG_RDNMA") or row.get("ORG_RDNDA") or "").strip(); marker=code or f"{name}|{address}"
-        if not name or marker in seen: continue
-        seen.add(marker); items.append({"code":code,"name":name,"address":address})
-    limit=5 if sample_mode else 20; return {"configured":True,"sample_mode":sample_mode,"items":items[:limit],"message":"공식 NEIS 샘플 검색 결과입니다. 인증키 연결 전에는 최대 5건까지 표시됩니다." if sample_mode else ""}
+def aioff_education_learning(case_id: str):
+    case=_education_case(case_id); source=_select_source(case); visual=_simple_visual(source); return {"ok":True,"pack":_make_adaptive_study_pack(case,source,visual)}
 
 @app.post("/api/case-start")
 def case_start(req: CaseStartRequest):
@@ -695,13 +581,8 @@ flow.case_start=case_start
 class AioffTutorChatRequest(BaseModel): session_id: str|None=None; message: str=Field(min_length=1,max_length=4000); lesson_id: str|None=None; current_question: str=Field(default="",max_length=1000); question_attempt: int=Field(default=1,ge=1,le=20)
 class TutorDecision(BaseModel): verdict: Literal["pass","clarify","retry"]; response: str=Field(min_length=1,max_length=2200)
 
-def _tutor_level_rules(user: dict[str,Any]|None) -> str:
-    level=str((user or {}).get("school_level") or ""); grade=int((user or {}).get("grade") or 0)
-    if level=="초" and grade<=3: return "초등 1~3학년: 1~2개의 짧은 문장으로 말하고 쉬운 일상어를 쓴다."
-    if level=="초": return "초등 4~6학년: 쉬운 말로 2~3문장 피드백을 주고 이유나 근거 하나를 자기 말로 설명하게 한다."
-    if level=="중": return "중학생: 2~4문장으로 학생의 논리를 요약하고 사실·해석·원인·결과 중 필요한 한 요소를 점검한다."
-    if level=="고": return "고등학생: 3~5문장으로 논리와 근거의 연결을 평가하고 전제·대안적 해석까지 필요할 때 점검한다."
-    return "학생 수준에 맞는 짧고 자연스러운 피드백을 준다."
+def _tutor_level_rules() -> str:
+    return "학생의 답을 2~5문장으로 자연스럽게 해석하고, 자료의 사실·근거·판단 기준과 연결해 설명한다."
 
 def _rows(case: dict[str,Any]) -> dict[str,str]: return {str(x.get("label") or "").strip():str(x.get("value") or "").strip() for x in case.get("data_rows",[])}
 
@@ -753,11 +634,11 @@ def kobaco_ai_chat_stream(req: AioffTutorChatRequest):
     if not found or found[0]!=lesson_id: raise HTTPException(400,"선택한 사례를 다시 확인해 주세요.")
     return StreamingResponse(_stream_model_reply(_kobaco_learning_prompt(sid,req.message,lesson_id,found[1]),sid,req.message),media_type="text/plain; charset=utf-8",headers={"X-Session-Id":sid,"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
-def _education_tutor_prompt(req: AioffTutorChatRequest,sid: str,case: dict[str,Any],user: dict[str,Any]|None) -> str:
-    source=_select_source(case); visual=_simple_visual(source); pack=_make_adaptive_study_pack(case,source,user,visual); evidence="\n\n".join(str(x) for x in pack.get("reading",[]) if str(x).strip())[:10000]; question=str(req.current_question or case.get("opening_question") or "").strip(); prior=base.core.messages(sid,18); history="\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior); level=str((user or {}).get("school_level") or ""); grade=int((user or {}).get("grade") or 0); profile=f"{level} {grade}학년" if grade else (level or "학생"); process_hint="오답이면 정답 내용을 말하지 말고 학생이 질문에서 놓친 요구사항 하나만 확인하게 한다." if req.question_attempt<=1 else "오답이 반복되면 정답 키워드 대신 질문을 나눠 읽기, 읽어보기에서 근거 찾기 같은 사고 절차만 제안한다."
+def _education_tutor_prompt(req: AioffTutorChatRequest,sid: str,case: dict[str,Any]) -> str:
+    source=_select_source(case); visual=_simple_visual(source); pack=_make_adaptive_study_pack(case,source,visual); evidence="\n\n".join(str(x) for x in pack.get("reading",[]) if str(x).strip())[:10000]; question=str(req.current_question or case.get("opening_question") or "").strip(); prior=base.core.messages(sid,18); history="\n".join(f"{'학생' if m['role']=='user' else '튜터'}: {m['content']}" for m in prior); profile="학생"; process_hint="오답이면 정답 내용을 말하지 말고 학생이 질문에서 놓친 요구사항 하나만 확인하게 한다." if req.question_attempt<=1 else "오답이 반복되면 정답 키워드 대신 질문을 나눠 읽기, 읽어보기에서 근거 찾기 같은 사고 절차만 제안한다."
     return f'''너는 디지털 리터러시 수업의 대화형 튜터다. 학생이 실제로 무슨 뜻으로 답했는지 이해하는 것이 우선이다.
-학생 수준: {profile}
-피드백 규칙: {_tutor_level_rules(user)}
+대상: {profile}
+피드백 규칙: {_tutor_level_rules()}
 현재 문항: {question}
 학생 답변: {req.message}
 [학생 화면 읽어보기]
@@ -777,12 +658,12 @@ def aioff_chat_stream(req: AioffTutorChatRequest,request: Request):
     base._save_lesson(sid,lesson_id); case_id=_get_case_id(sid); found=CASE_BY_ID.get(case_id) if case_id else None
     if not found or found[0]!=lesson_id: raise HTTPException(400,"선택한 사례를 다시 확인해 주세요.")
     if not str(case_id).startswith("education_"): return kobaco_ai_chat_stream(req)
-    user=auth.current_user(request.cookies.get(auth.COOKIE_NAME)); prompt=_education_tutor_prompt(req,sid,found[1],user)
+    prompt=_education_tutor_prompt(req,sid,found[1])
     try: decision,provider=base.core.generate_structured_with_fallback(prompt,TutorDecision,max_output_tokens=700)
     except Exception as exc: base.core.logger.warning("Education tutor evaluation failed: %s",type(exc).__name__); raise HTTPException(502,"학습 답변 평가에 실패했습니다. 잠시 후 다시 시도해 주세요.")
     text=str(decision.response or "").strip(); base.core.save_chat_exchange(sid,req.message,text); return Response(text,media_type="text/plain; charset=utf-8",headers={"X-Session-Id":sid,"X-AIOFF-Provider":provider,"X-AIOFF-Verdict":decision.verdict,"Cache-Control":"no-cache","X-Accel-Buffering":"no"})
 
-# Renderer: self-contained picker + auth + wide study layout
+# Renderer: self-contained picker + wide study layout
 
 def _render_index_aioff_ui() -> str:
     page=base._render_index(); page=re.sub(r'\s*<section class="process" aria-label="이용 순서">.*?</section>\s*',"\n",page,count=1,flags=re.S)
@@ -795,24 +676,22 @@ def _render_index_aioff_ui() -> str:
     topic_json=json.dumps({lesson_id:[flow._public_case(c) for c in CASE_LIBRARY.get(lesson_id,[])] for lesson_id in ("news","deepfake","ai")},ensure_ascii=False).replace("</","<\\/")
     css=r'''<style>
 main{width:calc(100% - 24px)!important;max-width:1800px!important;margin:0 auto!important;padding:28px 0 42px!important}.workspace,.study-paper{width:100%!important;max-width:none!important}.study-paper>.paper-head .mode-label{display:none!important}.lesson-detail{display:none!important}.kobaco-db-banner{display:flex;justify-content:space-between;gap:18px;align-items:center;margin:0 0 16px;padding:10px 14px;border:1px solid #d9d2c8;border-radius:9px;background:#f8f5ef;color:#3a352f;font-size:10px}.kobaco-db-banner strong{font-size:11px}.kobaco-db-banner span{color:#71695f}.chat-case-picker{margin:8px 0 18px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:18px}.chat-case-picker-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:14px}.chat-case-picker-head strong{font-size:13px}.chat-case-picker-head span{font-size:10px;color:var(--muted)}.chat-case-shuffle{border:1px solid var(--line);background:#fff;border-radius:7px;padding:7px 9px;font-size:9px;font-weight:800}.chat-case-options{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.chat-case-option{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:0 0 13px;text-align:left;color:var(--ink);overflow:hidden}.chat-case-option:hover{border-color:#9db2e7}.chat-case-option.active{border-color:var(--blue);background:var(--blue-soft)}.chat-case-option>b,.chat-case-option>small{display:block;margin-left:14px;margin-right:14px}.chat-case-option>b{font-size:11px;line-height:1.4}.chat-case-option>small{margin-top:5px;font-size:9px;color:var(--muted)}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview,.aioff-news-preview{width:100%;height:230px;min-height:230px;margin:0 0 12px;overflow:hidden;background:#eee9e1;position:relative}.education-guide-preview-v19 iframe{position:absolute;inset:0;width:calc(100% + 18px);height:calc(100% + 18px);border:0;background:#fff;pointer-events:none}.education-guide-preview-v19 .edu-chip{position:absolute;left:8px;bottom:8px;z-index:3;padding:4px 7px;border-radius:6px;background:rgba(22,31,43,.78);color:#fff;font-size:8px;font-weight:800}.kobaco-picker-media img,.aioff-news-preview img{display:block;width:100%;height:100%;object-fit:cover}.topic-preview{display:flex;flex-direction:column;justify-content:flex-end;padding:12px;background:#33465b;color:#fff}.chat-case-card{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden;margin:12px 0 18px}.chat-case-top{padding:11px 13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}.chat-case-kicker{font-size:9px;font-weight:900;color:var(--orange)}.chat-case-title{font-size:14px;font-weight:850}.chat-case-source{font-size:9px;color:var(--muted);margin-top:4px}.chat-case-link{font-size:10px;font-weight:800;color:var(--body);text-decoration:none;border:1px solid var(--line);padding:6px 8px;border-radius:7px}.chat-case-media{background:#eee9e1;display:flex;align-items:center;justify-content:center;overflow:hidden}.chat-case-caption{padding:7px 14px;border-top:1px solid var(--line);font-size:9px;color:var(--muted)}.kobaco-data-card{width:100%;background:#fff}.aisac-player-shell{height:clamp(440px,62vh,760px);max-height:760px;min-height:440px;background:#171513}.aisac-player-frame{width:100%;height:100%;border:0}.aisac-card-title{padding:11px 14px 5px;font-size:13px;font-weight:850}.context-actions{display:flex;gap:8px;flex-wrap:wrap;padding:8px 14px 12px}.context-actions a{padding:7px 10px;border-radius:7px;background:#2d2925;color:#fff!important;text-decoration:none;font-size:9px;font-weight:800}.context-actions a.alt{background:#fff;color:#2d2925!important;border:1px solid #cfc6ba}.fact-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 14px;background:#f7f4ef}.fact-grid div{background:#fff;border:1px solid #ddd5ca;border-radius:8px;padding:10px}.fact-grid small{display:block;font-size:9px;color:#7b7168}.fact-grid b{display:block;margin-top:4px;font-size:11px}.aisac-result{padding:14px}.aisac-result small{font-size:9px;font-weight:900}.aisac-result strong{display:block;margin-top:6px;font-size:13px;line-height:1.6}.kobaco-data-table{border:1px solid #d9d2c8;background:#fff;border-radius:8px;overflow:hidden;margin:0 14px 14px}.kobaco-data-row{display:grid;grid-template-columns:120px 1fr;border-top:1px solid #ebe5dc}.kobaco-data-row:first-child{border-top:0}.kobaco-data-row b{padding:9px 11px;background:#faf8f4;font-size:9px}.kobaco-data-row span{padding:9px 11px;font-size:11px;line-height:1.45}.education-study-v21{border:1px solid #d9d2c9;border-radius:10px;background:#fff;overflow:hidden;width:100%}.education-study-v21-head{padding:18px 20px 15px;border-bottom:1px solid #e2dbd2;background:#f8fafc}.education-study-v21-head small{display:block;margin-bottom:5px;font-size:10px;font-weight:800;color:#58749b}.education-study-v21-head b{display:block;font-size:20px}.education-study-v21-status{padding:24px 20px;font-size:12px;color:#746d66}.education-study-v21-body{padding:20px}.education-study-v21-visual{margin:0 0 16px;border:1px solid #ddd6cd;border-radius:9px;overflow:hidden;background:#ece8e1}.education-study-v21-visual iframe{display:block;width:100%;height:clamp(620px,72vh,920px);border:0}.education-study-v21-reading{padding:17px 19px;border:1px solid #e2ddd6;border-radius:9px;background:#fffdf9}.education-study-v21-reading h4,.education-study-v21-questions h4{margin:0 0 11px;font-size:14px}.education-study-v21-reading p{margin:0 0 11px;font-size:14px;line-height:1.8}.education-study-v21-questions{margin-top:14px;padding:17px 19px;border:1px solid #eadbc8;border-radius:9px;background:#fff8ee}.education-study-v21-questions ol{padding-left:0;list-style:none}.education-study-v21-questions li{display:none;font-size:14px;line-height:1.7;font-weight:700}.education-study-v21-questions li.aioff-current-question{display:block}.education-study-v21-actions{display:flex;gap:8px;margin-top:12px}.education-study-v21-actions a{padding:8px 11px;border:1px solid #cfc6ba;border-radius:7px;background:#fff;color:#2d2925!important;text-decoration:none;font-size:10px;font-weight:800}.aioff-learning-columns{display:grid;grid-template-columns:minmax(0,1fr) clamp(320px,24vw,430px);min-height:calc(100vh - 150px)}.aioff-learning-columns>.chat-area{min-width:0;padding:18px 20px 18px 24px!important;border-right:1px solid var(--line)}.aioff-learning-columns .chat{height:calc(100vh - 205px)!important;min-height:760px!important;max-height:none!important}.aioff-composer-side{min-width:0;display:flex;flex-direction:column;background:#fffdf9}.aioff-composer-side-head{padding:18px;border-bottom:1px solid var(--line)}.aioff-side-question{margin-top:12px;padding:12px 13px;border:1px solid #eadbc8;border-radius:10px;background:#fff8ee}.aioff-side-question small{display:block;margin-bottom:5px;font-size:10px;font-weight:850;color:#9a5b30}.aioff-side-question b{display:block;font-size:13px;line-height:1.55}.aioff-composer-side .composer-wrap{flex:1;display:flex;flex-direction:column;padding:16px 18px 18px!important}.aioff-composer-side .composer{flex:1;display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:12px!important;border-top:0!important}.aioff-composer-side .composer textarea{flex:1;width:100%!important;min-height:560px!important;max-height:none!important;resize:none!important}.aioff-composer-side .send-btn{align-self:flex-end;min-width:96px;height:46px!important}
-#aioff-auth-overlay{position:fixed;inset:0;z-index:10000;background:rgba(25,22,19,.28);display:none;align-items:center;justify-content:center;padding:20px}#aioff-auth-overlay.open{display:flex}.aioff-auth-modal{width:min(540px,calc(100vw - 30px));max-height:calc(100vh - 40px);overflow:auto;background:#f8f5ef;border:1px solid #d9d2c8;border-radius:12px}.aioff-auth-head{display:flex;justify-content:space-between;padding:21px 23px 16px}.aioff-auth-head h3{margin:0}.aioff-auth-close{border:0;background:none;font-size:18px}.aioff-auth-tabs{display:grid;grid-template-columns:1fr 1fr}.aioff-auth-tab{padding:13px;border:0;background:#eee9e1;font-weight:800}.aioff-auth-tab.active{background:#fff}.aioff-auth-pane{display:none;padding:21px 23px 24px;background:#fff}.aioff-auth-pane.active{display:block}.aioff-auth-form{display:grid;gap:13px}.aioff-auth-row{display:grid;grid-template-columns:1fr 1fr;gap:9px}.aioff-auth-field{display:grid;gap:6px}.aioff-auth-field label{font-size:11px;font-weight:800}.aioff-auth-field input,.aioff-auth-field select{width:100%;border:1px solid #cec7bd;border-radius:8px;background:#fff;padding:11px 12px;font-size:13px}.aioff-auth-submit{border:0;border-radius:8px;background:#22201d;color:#fff;padding:12px 14px;font-weight:850}.aioff-auth-message{min-height:15px;font-size:11px;color:#bf4b2e}.aioff-auth-message.ok{color:#1a6d49}.aioff-phone-group{display:grid;grid-template-columns:58px 8px 1fr 8px 1fr;align-items:center;gap:4px}.aioff-phone-group span{text-align:center}.aioff-phone-prefix{background:#f2eee8!important}.aioff-school-search{position:relative}.aioff-school-results{display:none;position:absolute;z-index:120;left:0;right:0;top:calc(100% + 4px);max-height:250px;overflow-y:auto;border:1px solid #d9d1c7;border-radius:8px;background:#fff}.aioff-school-results.open{display:block}.aioff-school-result{display:block;width:100%;border:0;border-bottom:1px solid #eee8e0;background:#fff;text-align:left;padding:10px 12px}.aioff-school-result b{display:block}.aioff-school-result small{display:block;font-size:10px;color:#7e766e}#aioff-login-required{position:fixed;left:50%;top:82px;transform:translateX(-50%);z-index:9999;display:none;padding:12px 14px;border:1px solid #d8d0c5;background:#fffdf9;border-radius:8px}#aioff-login-required.show{display:flex;gap:12px;align-items:center}
-@media(max-width:900px){.chat-case-options{grid-template-columns:1fr}.aioff-learning-columns{display:block}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side .composer textarea{min-height:220px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview,.aioff-news-preview{height:170px;min-height:170px}.aioff-auth-row{grid-template-columns:1fr}}
+@media(max-width:900px){.chat-case-options{grid-template-columns:1fr}.aioff-learning-columns{display:block}.aioff-learning-columns .chat{height:680px!important;min-height:680px!important}.aioff-composer-side .composer textarea{min-height:220px!important}.education-guide-preview-v19,.kobaco-picker-media,.topic-preview,.aioff-news-preview{height:170px;min-height:170px}}
 </style>'''
-    auth_html=r'''<div id="aioff-login-required"><span><b>로그인이 필요합니다.</b> 학습 주제를 선택하려면 먼저 로그인해 주세요.</span><button type="button" data-auth-open="login">로그인</button></div><span class="aioff-auth-dock aioff-auth-global"><button type="button" class="aioff-auth-state">LOGIN OFF</button><span class="aioff-auth-links"><button type="button" data-auth-open="login">로그인</button><button type="button" data-auth-open="register">회원가입</button></span></span><div id="aioff-auth-overlay" aria-hidden="true"><div class="aioff-auth-modal"><div class="aioff-auth-head"><div><h3>AI OFF</h3><p>학습 기록을 이어가기 위한 회원 기능입니다.</p></div><button type="button" class="aioff-auth-close">×</button></div><div class="aioff-auth-tabs"><button type="button" class="aioff-auth-tab active" data-auth-tab="login">로그인</button><button type="button" class="aioff-auth-tab" data-auth-tab="register">회원가입</button></div><div class="aioff-auth-pane active" data-auth-pane="login"><form id="aioff-login-form" class="aioff-auth-form"><div class="aioff-auth-field"><label>아이디</label><input name="login_id" required minlength="3"></div><div class="aioff-auth-field"><label>비밀번호</label><input name="password" type="password" required></div><div id="aioff-login-message" class="aioff-auth-message"></div><button class="aioff-auth-submit">로그인</button></form></div><div class="aioff-auth-pane" data-auth-pane="register"><form id="aioff-register-form" class="aioff-auth-form"><div class="aioff-auth-row"><div class="aioff-auth-field"><label>이름</label><input name="name" required></div><div class="aioff-auth-field"><label>전화번호</label><div class="aioff-phone-group"><input class="aioff-phone-prefix" value="010" readonly><span>-</span><input id="aioff-phone-2" maxlength="4" required><span>-</span><input id="aioff-phone-3" maxlength="4" required></div><input name="phone" id="aioff-phone-value" type="hidden"></div></div><div class="aioff-auth-field"><label>이메일</label><input name="email" type="email" required></div><div class="aioff-auth-field"><label>아이디</label><input name="login_id" minlength="3" maxlength="30" required></div><div class="aioff-auth-field"><label>비밀번호</label><input name="password" type="password" minlength="6" required></div><div class="aioff-auth-row"><div class="aioff-auth-field"><label>지역</label><select name="school_region" id="aioff-school-region" required><option value="">지역 선택</option><option>서울</option><option>부산</option><option>대구</option><option>인천</option><option>광주</option><option>대전</option><option>울산</option><option>세종</option><option>경기</option><option>강원</option><option>충북</option><option>충남</option><option>전북</option><option>전남</option><option>경북</option><option>경남</option><option>제주</option></select></div><div class="aioff-auth-field"><label>학교급</label><select name="school_level" id="aioff-school-level" required><option value="">학교급 선택</option><option value="초">초등</option><option value="중">중등</option><option value="고">고등</option></select></div></div><div class="aioff-auth-field"><label>학교</label><div class="aioff-school-search"><input name="school_name" id="aioff-school-name" required><input name="school_code" id="aioff-school-code" type="hidden"><div id="aioff-school-results" class="aioff-school-results"></div></div><div id="aioff-school-message"></div></div><div class="aioff-auth-field"><label>학년</label><select name="grade" id="aioff-grade" required><option value="">학교급을 먼저 선택해 주세요</option></select></div><div id="aioff-register-message" class="aioff-auth-message"></div><button class="aioff-auth-submit">회원가입</button></form></div></div></div>'''
     script=f'''<script>
 const fixedTopicCases={topic_json};const fixedSamples={{}};let inlineLessonId=null,inlineCaseId=null;
 function fixedShuffle(items){{const a=[...items];for(let i=a.length-1;i>0;i--){{const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}return a;}}function fixedSample(id){{fixedSamples[id]=fixedShuffle(fixedTopicCases[id]||[]).slice(0,3);return fixedSamples[id];}}function compactTitle(t){{t=String(t||'');return t.length>36?t.slice(0,36)+'…':t;}}
 function fixedPreview(c){{const id=String(c?.id||'');if(id.startsWith('education_'))return `<div class="education-guide-preview-v19"><iframe src="/api/education-file/${{encodeURIComponent(id)}}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=Fit"></iframe><span class="edu-chip">${{esc([c.education_target||'',c.education_year||''].filter(Boolean).join(' · '))}}</span></div>`;if(id.startsWith('kobaco_aisac_'))return `<div class="kobaco-picker-media"><img src="/api/aioff-aisac-thumb/${{encodeURIComponent(id)}}"></div>`;if(id.startsWith('news_'))return `<div class="aioff-news-preview"><img src="/api/aioff-news-thumb/${{encodeURIComponent(id)}}"></div>`;return `<div class="topic-preview"><b>${{esc(c.label||'학습 사례')}}</b></div>`;}}
 function fixedPickerHtml(id,active=null){{const cases=fixedSamples[id]||fixedSample(id),total=(fixedTopicCases[id]||[]).length;return `<div class="chat-case-picker"><div class="chat-case-picker-head"><div><strong>사례를 골라보세요</strong><br><span>전체 ${{total}}개 · 3개 선택</span></div><button class="chat-case-shuffle" data-shuffle-cases>다른 사례 보기</button></div><div class="chat-case-options">${{cases.map((c,i)=>`<button class="chat-case-option ${{c.id===active?'active':''}}" data-case-id="${{c.id}}">${{fixedPreview(c)}}<b>${{i+1}}. ${{esc(compactTitle(c.title))}}</b><small>${{esc(c.label||'')}}</small></button>`).join('')}}</div></div>`;}}function pickerHtml(id,a=null){{return fixedPickerHtml(id,a);}}
 function bindCaseButtons(id){{chat.querySelectorAll('[data-case-id]').forEach(btn=>btn.addEventListener('click',()=>startCase(id,btn.dataset.caseId)));const sh=chat.querySelector('[data-shuffle-cases]');if(sh)sh.addEventListener('click',()=>{{sessionId=null;inlineCaseId=null;resetInlineState();fixedSample(id);chat.innerHTML=fixedPickerHtml(id);bindCaseButtons(id);}});}}function resetInlineState(){{questions=[];delegationMap={{}};aiOffStarted=false;hasResult=false;requestInFlight=false;input.value='';input.disabled=true;send.disabled=true;finish.disabled=true;}}
-async function showCaseChooser(id){{inlineLessonId=id;inlineCaseId=null;sessionId=null;resetInlineState();if(id==='deepfake'){{try{{const r=await fetch('/api/aioff-education-cases',{{credentials:'same-origin'}}),d=r.ok?await r.json():{{}};if(d.logged_in&&Array.isArray(d.items)&&d.items.length>=3){{fixedTopicCases.deepfake=d.items;delete fixedSamples.deepfake;}}}}catch(e){{}}}}fixedSample(id);chat.innerHTML=fixedPickerHtml(id);bindCaseButtons(id);input.placeholder='위에서 사례를 먼저 선택해 주세요.';stageText.textContent='사례를 선택하세요';}}
+async function showCaseChooser(id){{inlineLessonId=id;inlineCaseId=null;sessionId=null;resetInlineState();if(id==='deepfake'){{try{{const r=await fetch('/api/aioff-education-cases'),d=r.ok?await r.json():{{}};if(Array.isArray(d.items)&&d.items.length){{fixedTopicCases.deepfake=d.items;delete fixedSamples.deepfake;}}}}catch(e){{}}}}fixedSample(id);chat.innerHTML=fixedPickerHtml(id);bindCaseButtons(id);input.placeholder='위에서 사례를 먼저 선택해 주세요.';stageText.textContent='사례를 선택하세요';}}
 function fixedRows(c){{const o={{}};(c.data_rows||[]).forEach(r=>o[String(r.label||'').trim()]=String(r.value||'').trim());return o;}}function fixedRawRows(c){{return (c.data_rows||[]).map(r=>`<div class="kobaco-data-row"><b>${{esc(r.label||'항목')}}</b><span>${{esc(r.value||'-')}}</span></div>`).join('');}}
 function aisacLearningCard(c){{const r=fixedRows(c);return `<div class="chat-case-media"><div class="kobaco-data-card"><div class="aisac-player-shell"><iframe class="aisac-player-frame" src="/api/aisac-player/${{encodeURIComponent(c.id)}}"></iframe></div><div class="aisac-card-title">${{esc(c.title||'-')}}</div><div class="context-actions"><a href="/api/aisac-open/${{encodeURIComponent(c.id)}}" target="_blank">원본 페이지 ↗</a><a class="alt" href="${{esc(c.aisac_search_url||c.source_url||'#')}}" target="_blank">검색 결과 ↗</a></div><div class="fact-grid"><div><small>등록일</small><b>${{esc(r['등록일']||c.registration_date||'-')}}</b></div><div><small>광고주</small><b>${{esc(r['광고주']||'-')}}</b></div><div><small>업종</small><b>${{esc(r['업종']||'-')}}</b></div></div><div class="aisac-result"><small>AiSAC이 인식한 키워드</small><strong>${{esc(r['키워드']||'-')}}</strong></div><div class="kobaco-data-table">${{fixedRawRows(c)}}</div></div></div>`;}}
 function educationLearningCard(c){{const id=String(c.id||'');return `<div class="chat-case-media"><div class="education-study-v21" data-edu-v21="${{id}}" data-loaded="0"><div class="education-study-v21-head"><small>리터러시 교육 안내서</small><b data-title>${{esc(c.title||'학습 활동')}}</b></div><div class="education-study-v21-status" data-status>학습 내용을 준비하는 중...</div><div class="education-study-v21-body" data-content style="display:none"><div class="education-study-v21-visual" data-visual style="display:none"></div><div class="education-study-v21-reading"><h4>읽어보기</h4><div data-reading></div></div><div class="education-study-v21-questions"><h4>생각해보기</h4><ol data-questions></ol></div><div class="education-study-v21-actions"><a href="/api/education-file/${{id}}" target="_blank">원문 보기</a></div></div></div></div>`;}}
 function caseMedia(c){{const id=String(c?.id||'');if(id.startsWith('education_'))return educationLearningCard(c);if(id.startsWith('kobaco_aisac_'))return aisacLearningCard(c);return `<div class="chat-case-media"><div class="kobaco-data-card"><div class="aisac-card-title">${{esc(c.title||'자료')}}</div></div></div>`;}}function caseCard(c){{return `<div class="chat-case-card"><div class="chat-case-top"><div><div class="chat-case-kicker">${{esc(c.label||'')}}</div><div class="chat-case-title">${{esc(c.title||'')}}</div><div class="chat-case-source">사례 출처 · ${{esc(c.source_name||'')}}</div></div>${{c.source_url?`<a class="chat-case-link" href="${{esc(c.source_url)}}" target="_blank">원문 보기 ↗</a>`:''}}</div>${{caseMedia(c)}}<div class="chat-case-caption">${{esc(c.media_caption||'')}}</div></div>`;}}
-async function startCase(id,cid){{const st=document.getElementById('chatStatus');try{{const r=await fetch('/api/case-start',{{method:'POST',headers:{{'Content-Type':'application/json'}},credentials:'same-origin',body:JSON.stringify({{lesson_id:id,case_id:cid}})}}),d=await r.json();if(!r.ok)throw new Error(d.detail||'사례 시작 실패');sessionId=d.session_id;selectedLesson=id;inlineLessonId=id;inlineCaseId=cid;chat.innerHTML=fixedPickerHtml(id,cid)+caseCard(d.case);bindCaseButtons(id);addMsg('assistant',d.opening_question);input.disabled=false;send.disabled=false;finish.disabled=false;st.textContent='';}}catch(e){{setError(st,e.message);}}}}
-</script><script>(()=>{{const overlay=document.getElementById('aioff-auth-overlay'),dock=document.querySelector('.aioff-auth-dock'),required=document.getElementById('aioff-login-required');window.aioffAuthUser=null;const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));document.querySelector('.topbar .mode')?.setAttribute('style','display:none!important');async function api(url,opt={{}}){{const r=await fetch(url,{{credentials:'same-origin',headers:{{'Content-Type':'application/json',...(opt.headers||{{}})}},...opt}});let d={{}};try{{d=await r.json()}}catch(e){{}}if(!r.ok)throw new Error(d.detail||d.message||`HTTP ${{r.status}}`);return d}}function setTab(t){{document.querySelectorAll('[data-auth-tab]').forEach(x=>x.classList.toggle('active',x.dataset.authTab===t));document.querySelectorAll('[data-auth-pane]').forEach(x=>x.classList.toggle('active',x.dataset.authPane===t))}}function openAuth(t='login'){{overlay.classList.add('open');setTab(t)}}window.openAioffAuth=openAuth;function closeAuth(){{overlay.classList.remove('open')}}function renderDock(){{const u=window.aioffAuthUser;dock.classList.toggle('is-on',!!u);dock.innerHTML=u?`<span class="aioff-auth-greeting">${{escapeHtml(u.school_name||'')}} ${{escapeHtml(u.name||'')}}님 어서오세요.</span><button class="aioff-auth-state">LOGIN ON</button><span class="aioff-auth-links"><button data-auth-logout>로그아웃</button></span>`:`<button class="aioff-auth-state">LOGIN OFF</button><span class="aioff-auth-links"><button data-auth-open="login">로그인</button><button data-auth-open="register">회원가입</button></span>`}}async function refreshAuth(){{try{{const d=await api('/api/auth/me',{{method:'GET',headers:{{}}}});window.aioffAuthUser=d.user||null}}catch(e){{window.aioffAuthUser=null}}renderDock()}}document.addEventListener('click',async e=>{{const o=e.target.closest?.('[data-auth-open]');if(o){{e.preventDefault();openAuth(o.dataset.authOpen||'login');return}}const l=e.target.closest?.('[data-auth-logout]');if(l){{e.preventDefault();try{{await api('/api/auth/logout',{{method:'POST',body:'{{}}'}})}}catch(e){{}}window.aioffAuthUser=null;renderDock()}}}},true);overlay.querySelector('.aioff-auth-close').addEventListener('click',closeAuth);document.querySelectorAll('[data-auth-tab]').forEach(x=>x.addEventListener('click',()=>setTab(x.dataset.authTab)));document.getElementById('aioff-login-form').addEventListener('submit',async e=>{{e.preventDefault();const m=document.getElementById('aioff-login-message');try{{const d=await api('/api/auth/login',{{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.currentTarget)))}});window.aioffAuthUser=d.user;m.textContent='로그인되었습니다.';renderDock();setTimeout(closeAuth,200)}}catch(err){{m.textContent=err.message}}}});const p2=document.getElementById('aioff-phone-2'),p3=document.getElementById('aioff-phone-3'),pv=document.getElementById('aioff-phone-value'),level=document.getElementById('aioff-school-level'),region=document.getElementById('aioff-school-region'),grade=document.getElementById('aioff-grade'),school=document.getElementById('aioff-school-name'),scode=document.getElementById('aioff-school-code'),box=document.getElementById('aioff-school-results'),note=document.getElementById('aioff-school-message');const digits=x=>x.value=x.value.replace(/\D/g,'').slice(0,4);p2.addEventListener('input',()=>digits(p2));p3.addEventListener('input',()=>digits(p3));function grades(){{const n=level.value==='초'?6:(level.value==='중'||level.value==='고'?3:0);grade.innerHTML=n?'<option value="">학년 선택</option>'+Array.from({{length:n}},(_,i)=>`<option value="${{i+1}}">${{i+1}}학년</option>`).join(''):'<option value="">학교급을 먼저 선택해 주세요</option>'}}level.addEventListener('change',grades);let timer=null;async function loadSchools(){{if(!region.value||!level.value)return;try{{const r=await fetch(`/api/auth/schools?region=${{encodeURIComponent(region.value)}}&school_level=${{encodeURIComponent(level.value)}}&q=${{encodeURIComponent(school.value.trim())}}`,{{credentials:'same-origin'}}),d=await r.json();if(!r.ok)throw new Error(d.detail||'검색 실패');const items=d.items||[];box.innerHTML=items.map((x,i)=>`<button type="button" class="aioff-school-result" data-i="${{i}}"><b>${{escapeHtml(x.name)}}</b><small>${{escapeHtml(x.address||'')}}</small></button>`).join('');box.classList.toggle('open',!!items.length);box.querySelectorAll('[data-i]').forEach(b=>b.addEventListener('mousedown',e=>{{e.preventDefault();const x=items[Number(b.dataset.i)];school.value=x.name;scode.value=x.code||'';box.classList.remove('open')}}))}}catch(err){{note.textContent=err.message}}}}school.addEventListener('focus',loadSchools);school.addEventListener('input',()=>{{clearTimeout(timer);timer=setTimeout(loadSchools,220)}});document.getElementById('aioff-register-form').addEventListener('submit',async e=>{{e.preventDefault();digits(p2);digits(p3);pv.value=`010${{p2.value}}${{p3.value}}`;const v=Object.fromEntries(new FormData(e.currentTarget));v.grade=Number(v.grade||0);const m=document.getElementById('aioff-register-message');try{{const d=await api('/api/auth/register',{{method:'POST',body:JSON.stringify(v)}});window.aioffAuthUser=d.user;m.textContent='회원가입이 완료되었습니다.';renderDock();setTimeout(closeAuth,250)}}catch(err){{m.textContent=err.message}}}});[...document.querySelectorAll('.lesson-card')].forEach(old=>{{const card=old.cloneNode(true);old.replaceWith(card);card.addEventListener('click',async()=>{{if(!window.aioffAuthUser){{required.classList.add('show');setTimeout(()=>required.classList.remove('show'),3000);openAuth('login');return}}selectedLesson=card.dataset.lesson;document.querySelectorAll('.lesson-card').forEach(x=>x.classList.toggle('selected',x===card));await showCaseChooser(selectedLesson)}})}});refreshAuth()}})();</script><script>(()=>{{let activeCard=null,activeQ=[],idx=0,attempts=[];const nativeFetch=window.fetch.bind(window);function layout(){{const paper=document.querySelector('.study-paper');if(!paper||paper.querySelector('.aioff-learning-columns'))return;const a=paper.querySelector(':scope > .chat-area'),c=paper.querySelector(':scope > .composer-wrap');if(!a||!c)return;const cols=document.createElement('div');cols.className='aioff-learning-columns';paper.insertBefore(cols,a);cols.appendChild(a);const side=document.createElement('aside');side.className='aioff-composer-side';side.innerHTML='<div class="aioff-composer-side-head"><strong>생각 적기</strong><span>현재 질문 하나에 답해보세요.</span><div class="aioff-side-question" data-aioff-side-question style="display:none"><small data-aioff-side-progress></small><b data-aioff-side-text></b></div></div>';side.appendChild(c);cols.appendChild(side)}}async function hydrate(card){{if(card.dataset.loaded!=='0')return;card.dataset.loaded='loading';const id=card.dataset.eduV21,s=card.querySelector('[data-status]');try{{const r=await nativeFetch('/api/education-learning/'+encodeURIComponent(id),{{credentials:'same-origin'}}),d=await r.json(),p=d.pack||{{}};if(p.activity_title)card.querySelector('[data-title]').textContent=p.activity_title;if(p.visual_available){{const v=card.querySelector('[data-visual]');v.innerHTML=`<iframe src="/api/education-visual/${{encodeURIComponent(id)}}#page=${{p.page||1}}&toolbar=0&navpanes=0&view=FitH"></iframe>`;v.style.display='block'}}card.querySelector('[data-reading]').innerHTML=(p.reading||[]).map(x=>`<p>${{esc(x)}}</p>`).join('');card.querySelector('[data-questions]').innerHTML=(p.questions||[]).map(x=>`<li>${{esc(x)}}</li>`).join('');s.style.display='none';card.querySelector('[data-content]').style.display='block';card.dataset.loaded='1'}}catch(e){{s.textContent='학습 내용을 불러오지 못했습니다.';card.dataset.loaded='error'}}}}function update(state=''){{if(!activeCard||!activeQ.length)return;[...activeCard.querySelectorAll('.education-study-v21-questions li')].forEach((li,i)=>li.classList.toggle('aioff-current-question',i===idx));const side=document.querySelector('[data-aioff-side-question]'),p=document.querySelector('[data-aioff-side-progress]'),t=document.querySelector('[data-aioff-side-text]');if(side&&p&&t){{side.style.display='block';p.textContent=`질문 ${{idx+1}} / ${{activeQ.length}}`;t.textContent=activeQ[idx]||''}}}}function seq(){{const cards=[...document.querySelectorAll('.education-study-v21[data-loaded="1"]')];if(!cards.length)return;const c=cards[cards.length-1];if(c===activeCard&&c.dataset.seq==='1')return;const q=[...c.querySelectorAll('.education-study-v21-questions li')].map(x=>(x.textContent||'').trim()).filter(Boolean);if(!q.length)return;activeCard=c;activeQ=q;idx=0;attempts=new Array(q.length).fill(0);c.dataset.seq='1';update()}}window.fetch=async function(resource,init){{const url=typeof resource==='string'?resource:String(resource?.url||''),cid=String(inlineCaseId||'');let edu=false;if(url.includes('/api/chat-stream')&&cid.startsWith('education_')&&activeCard&&activeQ.length&&init&&typeof init.body==='string'){{try{{const b=JSON.parse(init.body);attempts[idx]=(attempts[idx]||0)+1;b.current_question=activeQ[idx]||'';b.question_attempt=attempts[idx];init={{...init,body:JSON.stringify(b)}};edu=true}}catch(e){{}}}}const r=await nativeFetch(resource,init);if(edu){{const v=(r.headers.get('X-AIOFF-Verdict')||'').toLowerCase();if(v==='pass'&&idx<activeQ.length-1){{idx++;setTimeout(update,100)}}else if(v)setTimeout(()=>update(v),100)}}return r}};function scan(){{layout();document.querySelectorAll('.education-study-v21[data-loaded="0"]').forEach(hydrate);seq()}}layout();scan();new MutationObserver(scan).observe(document.body,{{childList:true,subtree:true,attributes:true,attributeFilter:['data-loaded']}})}})();</script>'''
-    page=page.replace("</style>","</style>"+css,1); page=page.replace("</body>",auth_html+script+"\n</body>"); return page
+async function startCase(id,cid){{const st=document.getElementById('chatStatus');try{{const r=await fetch('/api/case-start',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{lesson_id:id,case_id:cid}})}}),d=await r.json();if(!r.ok)throw new Error(d.detail||'사례 시작 실패');sessionId=d.session_id;selectedLesson=id;inlineLessonId=id;inlineCaseId=cid;chat.innerHTML=fixedPickerHtml(id,cid)+caseCard(d.case);bindCaseButtons(id);addMsg('assistant',d.opening_question);input.disabled=false;send.disabled=false;finish.disabled=false;st.textContent='';}}catch(e){{setError(st,e.message);}}}}
+</script><script>(()=>{{document.querySelector('.topbar .mode')?.setAttribute('style','display:none!important');[...document.querySelectorAll('.lesson-card')].forEach(old=>{{const card=old.cloneNode(true);old.replaceWith(card);card.addEventListener('click',async()=>{{selectedLesson=card.dataset.lesson;document.querySelectorAll('.lesson-card').forEach(x=>x.classList.toggle('selected',x===card));await showCaseChooser(selectedLesson)}})}})}})();</script><script>(()=>{{let activeCard=null,activeQ=[],idx=0,attempts=[];const nativeFetch=window.fetch.bind(window);function layout(){{const paper=document.querySelector('.study-paper');if(!paper||paper.querySelector('.aioff-learning-columns'))return;const a=paper.querySelector(':scope > .chat-area'),c=paper.querySelector(':scope > .composer-wrap');if(!a||!c)return;const cols=document.createElement('div');cols.className='aioff-learning-columns';paper.insertBefore(cols,a);cols.appendChild(a);const side=document.createElement('aside');side.className='aioff-composer-side';side.innerHTML='<div class="aioff-composer-side-head"><strong>생각 적기</strong><span>현재 질문 하나에 답해보세요.</span><div class="aioff-side-question" data-aioff-side-question style="display:none"><small data-aioff-side-progress></small><b data-aioff-side-text></b></div></div>';side.appendChild(c);cols.appendChild(side)}}async function hydrate(card){{if(card.dataset.loaded!=='0')return;card.dataset.loaded='loading';const id=card.dataset.eduV21,s=card.querySelector('[data-status]');try{{const r=await nativeFetch('/api/education-learning/'+encodeURIComponent(id)),d=await r.json(),p=d.pack||{{}};if(p.activity_title)card.querySelector('[data-title]').textContent=p.activity_title;if(p.visual_available){{const v=card.querySelector('[data-visual]');v.innerHTML=`<iframe src="/api/education-visual/${{encodeURIComponent(id)}}#page=${{p.page||1}}&toolbar=0&navpanes=0&view=FitH"></iframe>`;v.style.display='block'}}card.querySelector('[data-reading]').innerHTML=(p.reading||[]).map(x=>`<p>${{esc(x)}}</p>`).join('');card.querySelector('[data-questions]').innerHTML=(p.questions||[]).map(x=>`<li>${{esc(x)}}</li>`).join('');s.style.display='none';card.querySelector('[data-content]').style.display='block';card.dataset.loaded='1'}}catch(e){{s.textContent='학습 내용을 불러오지 못했습니다.';card.dataset.loaded='error'}}}}function update(state=''){{if(!activeCard||!activeQ.length)return;[...activeCard.querySelectorAll('.education-study-v21-questions li')].forEach((li,i)=>li.classList.toggle('aioff-current-question',i===idx));const side=document.querySelector('[data-aioff-side-question]'),p=document.querySelector('[data-aioff-side-progress]'),t=document.querySelector('[data-aioff-side-text]');if(side&&p&&t){{side.style.display='block';p.textContent=`질문 ${{idx+1}} / ${{activeQ.length}}`;t.textContent=activeQ[idx]||''}}}}function seq(){{const cards=[...document.querySelectorAll('.education-study-v21[data-loaded="1"]')];if(!cards.length)return;const c=cards[cards.length-1];if(c===activeCard&&c.dataset.seq==='1')return;const q=[...c.querySelectorAll('.education-study-v21-questions li')].map(x=>(x.textContent||'').trim()).filter(Boolean);if(!q.length)return;activeCard=c;activeQ=q;idx=0;attempts=new Array(q.length).fill(0);c.dataset.seq='1';update()}}window.fetch=async function(resource,init){{const url=typeof resource==='string'?resource:String(resource?.url||''),cid=String(inlineCaseId||'');let edu=false;if(url.includes('/api/chat-stream')&&cid.startsWith('education_')&&activeCard&&activeQ.length&&init&&typeof init.body==='string'){{try{{const b=JSON.parse(init.body);attempts[idx]=(attempts[idx]||0)+1;b.current_question=activeQ[idx]||'';b.question_attempt=attempts[idx];init={{...init,body:JSON.stringify(b)}};edu=true}}catch(e){{}}}}const r=await nativeFetch(resource,init);if(edu){{const v=(r.headers.get('X-AIOFF-Verdict')||'').toLowerCase();if(v==='pass'&&idx<activeQ.length-1){{idx++;setTimeout(update,100)}}else if(v)setTimeout(()=>update(v),100)}}return r}};function scan(){{layout();document.querySelectorAll('.education-study-v21[data-loaded="0"]').forEach(hydrate);seq()}}layout();scan();new MutationObserver(scan).observe(document.body,{{childList:true,subtree:true,attributes:true,attributeFilter:['data-loaded']}})}})();</script>'''
+    page=page.replace("</style>","</style>"+css,1); page=page.replace("</body>",script+"\n</body>"); return page
 
 base._remove_route("/","GET")
 @app.get("/",response_class=HTMLResponse)
