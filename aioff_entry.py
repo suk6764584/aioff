@@ -38,7 +38,6 @@ def aioff_thumbnail_jpg():
     return FileResponse(
         path=_THUMBNAIL_PATH,
         media_type='image/jpeg',
-        filename='aioff-thumbnail.jpg',
         headers={'Cache-Control': 'public, max-age=86400'},
     )
 
